@@ -1,0 +1,120 @@
+### Variables
+@baseUrl = http://localhost:5000/api/v1
+@token = YOUR_JWT_TOKEN_HERE
+
+### ============================================================================
+### 1. Register User
+### ============================================================================
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "misirali2009@gmail.com",
+  "password": "password123",
+  "fullName": "Misir Ali",
+  "phone": "+8801712345678"
+}
+
+### ============================================================================
+### 2. Verify Email
+### ============================================================================
+POST {{baseUrl}}/auth/verify-email
+Content-Type: application/json
+
+{
+  "email": "misirali2009@gmail.com",
+  "code": "18776359"
+}
+
+### ============================================================================
+### 3a. Login User(Wrong Credentials)
+### ============================================================================
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+
+### ============================================================================
+### 3b. Login User(Valid Credentials)
+### ============================================================================
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "misirali2009@gmail.com",
+  "password": "password123"
+}
+
+
+### ============================================================================
+### 4. Resend Verification Code
+### ============================================================================
+POST {{baseUrl}}/auth/resend-verification
+Content-Type: application/json
+
+{
+  "email": "test@example.com"
+}
+
+### ============================================================================
+### 5. Forgot Password
+### ============================================================================
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "test@example.com"
+}
+
+### ============================================================================
+### 6. Reset Password
+### ============================================================================
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "code": "87654321",
+  "newPassword": "newpassword123"
+}
+
+### ============================================================================
+### 7. Get Current User (Protected Route)
+### ============================================================================
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{token}}
+
+### ============================================================================
+### Test with Seeded Users
+### ============================================================================
+
+### Login as Admin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@gramoz.com",
+  "password": "admin123"
+}
+
+### Login as Seller
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "seller@gramoz.com",
+  "password": "seller123"
+}
+
+### Login as Customer
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "customer@gramoz.com",
+  "password": "customer123"
+}

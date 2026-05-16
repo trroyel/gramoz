@@ -1,0 +1,1 @@
+ALTER TABLE "products" ADD COLUMN "category" varchar(100) DEFAULT 'Uncategorized' NOT NULL;
