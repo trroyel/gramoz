@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi } from "@/lib/api/auth";
 import { loginSchema, LoginFormData } from "@/lib/validations/auth";
+import { PLATFORM_ROLES } from "@/types";
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -55,11 +56,17 @@ export function LoginForm() {
       const response = await authApi.login(formData);
       
       if (response.success && response.data) {
-        setAuth(response.data.user, response.data.token);
+        const user = response.data.user;
+        setAuth(user, response.data.token);
         toast.success("Login successful!", {
           description: "Welcome back to Gramoz.",
         });
-        router.push("/");
+        
+        if (user.role && PLATFORM_ROLES.includes(user.role)) {
+          router.push("/admin");
+        } else {
+          router.push("/");
+        }
       } else {
         toast.error("Login failed", {
           description: response.message || "Invalid credentials",

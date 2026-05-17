@@ -62,11 +62,13 @@ export class AuthService {
 
     return {
       success: true,
-      message: 'Registration successful. Please check your email for verification code.',
+      message:
+        'Registration successful. Please check your email for verification code.',
       data: {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
+        role: user.role,
       },
     };
   }
@@ -79,7 +81,10 @@ export class AuthService {
     }
 
     // Check password
-    const isPasswordValid = await argon2.verify(user.passwordHash, dto.password);
+    const isPasswordValid = await argon2.verify(
+      user.passwordHash,
+      dto.password,
+    );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -93,7 +98,11 @@ export class AuthService {
     const token = await this.generateToken(user);
 
     // Store session in Redis
-    await this.redis.setSession(user.id, token, this.config.jwtRefreshExpiresIn);
+    await this.redis.setSession(
+      user.id,
+      token,
+      this.config.jwtRefreshExpiresIn,
+    );
 
     // Update last login
     await this.userRepository.update(user.id, { lastLoginAt: new Date() });
@@ -106,6 +115,7 @@ export class AuthService {
           id: user.id,
           email: user.email,
           fullName: user.fullName,
+          role: user.role,
           isEmailVerified: user.isEmailVerified,
         },
         token,
@@ -239,7 +249,8 @@ export class AuthService {
 
     return {
       success: true,
-      message: 'Password reset successfully. Please login with your new password.',
+      message:
+        'Password reset successfully. Please login with your new password.',
       data: null,
     };
   }
@@ -252,6 +263,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
+        role: user.role,
         phone: user.phone,
         isEmailVerified: user.isEmailVerified,
         isPhoneVerified: user.isPhoneVerified,

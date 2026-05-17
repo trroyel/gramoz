@@ -15,7 +15,11 @@ export class MailService {
     this.resend = new Resend(this.config.emailApiKey);
   }
 
-  async sendVerificationEmail(email: string, code: string, fullName: string): Promise<void> {
+  async sendVerificationEmail(
+    email: string,
+    code: string,
+    fullName: string,
+  ): Promise<void> {
     await this.resend.emails.send({
       from: this.config.emailFrom,
       to: email,
@@ -24,7 +28,11 @@ export class MailService {
     });
   }
 
-  async sendPasswordResetEmail(email: string, code: string, fullName: string): Promise<void> {
+  async sendPasswordResetEmail(
+    email: string,
+    code: string,
+    fullName: string,
+  ): Promise<void> {
     await this.resend.emails.send({
       from: this.config.emailFrom,
       to: email,

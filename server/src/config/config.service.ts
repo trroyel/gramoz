@@ -75,11 +75,17 @@ export class ConfigService {
   }
 
   get verifyEmailTokenExpiresIn(): string {
-    return this.configService.get<string>('AUTH_VERIFY_EMAIL_TOKEN_EXPIRES_IN', '4h');
+    return this.configService.get<string>(
+      'AUTH_VERIFY_EMAIL_TOKEN_EXPIRES_IN',
+      '4h',
+    );
   }
 
   get resetPasswordTokenExpiresIn(): string {
-    return this.configService.get<string>('AUTH_RESET_PASSWORD_TOKEN_EXPIRES_IN', '1h');
+    return this.configService.get<string>(
+      'AUTH_RESET_PASSWORD_TOKEN_EXPIRES_IN',
+      '1h',
+    );
   }
 
   get bcryptSaltRounds(): number {

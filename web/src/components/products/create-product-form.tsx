@@ -35,11 +35,11 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
     description: initialData?.description || "",
     price: initialData?.price ? Number(initialData.price) : 0,
     stock: initialData?.stock || 0,
-    category: initialData?.category || "",
+    categoryId: initialData?.categoryId || "",
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(
-    initialData?.imageUrl ? getImageUrl(initialData.imageUrl) : null
+    initialData?.images?.[0] ? getImageUrl(initialData.images[0]) : null
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -50,9 +50,9 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
         description: initialData.description || "",
         price: initialData.price ? Number(initialData.price) : 0,
         stock: initialData.stock || 0,
-        category: initialData.category || "",
+        categoryId: initialData.categoryId || "",
       });
-      setImagePreview(initialData.imageUrl ? getImageUrl(initialData.imageUrl) : null);
+      setImagePreview(initialData.images?.[0] ? getImageUrl(initialData.images[0]) : null);
     }
   }, [initialData]);
 
@@ -90,16 +90,16 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
         name: formData.name,
         price: formData.price,
         stock: formData.stock,
-        category: formData.category,
+        categoryId: formData.categoryId,
         description: formData.description,
-        image: imageFile || undefined,
+        images: imageFile ? [imageFile] : undefined,
       };
 
       if (isEditMode && initialData?.id) {
         const response = await productsApi.update(initialData.id, dataToSubmit);
         if (response.success) {
           toast.success("Product updated successfully!");
-          router.push("/dashboard/products");
+          router.push("/admin/products");
         } else {
           toast.error("Failed to update product", {
             description: response.message,
@@ -110,7 +110,7 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
         
         if (response.success) {
           toast.success("Product created successfully!");
-          router.push("/dashboard/products");
+          router.push("/admin/products");
         } else {
           toast.error("Failed to create product", {
             description: response.message,
@@ -161,12 +161,12 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="category">Category *</Label>
+                <Label htmlFor="categoryId">Category ID *</Label>
                 <Input
-                  id="category"
-                  name="category"
-                  placeholder="e.g. Clothing, Electronics, Food"
-                  value={formData.category}
+                  id="categoryId"
+                  name="categoryId"
+                  placeholder="e.g. uuid-of-category"
+                  value={formData.categoryId}
                   onChange={handleChange}
                   disabled={isLoading}
                   required

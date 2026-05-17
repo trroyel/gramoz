@@ -16,12 +16,12 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
+import { PLATFORM_ROLES } from "@/types";
 
 const sidebarLinks = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Products", href: "/dashboard/products", icon: Package },
-  { name: "Orders", href: "/dashboard/orders", icon: ShoppingCart },
-  { name: "Settings", href: "/dashboard/settings", icon: Settings },
+  { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
+  { name: "Products", href: "/admin/products", icon: Package },
+  { name: "Orders", href: "/admin/orders", icon: ShoppingCart },
 ];
 
 export default function DashboardLayout({
@@ -34,13 +34,19 @@ export default function DashboardLayout({
   const { user, clearAuth } = useAuthStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Protect the dashboard route
+  // Protect the admin route
   useEffect(() => {
-    // If auth store is hydrated but there's no user, redirect
-    if (!user) {
+    if (user === undefined) return; // Wait for hydration if undefined
+    if (user === null) {
       router.push("/login");
+    } else if (user.role && !PLATFORM_ROLES.includes(user.role)) {
+      router.push("/");
     }
   }, [user, router]);
+
+  const isPlatformUser = user && user.role && PLATFORM_ROLES.includes(user.role);
+  // If there's no user or the user is not a platform user, don't render the layout
+  if (!isPlatformUser) return null;
 
   const handleLogout = () => {
     clearAuth();

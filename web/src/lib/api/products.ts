@@ -14,8 +14,8 @@ export const productsApi = {
       formData.append('description', data.description);
     }
     
-    if (data.image) {
-      formData.append('image', data.image);
+    if (data.images && data.images.length > 0) {
+      formData.append('image', data.images[0]);
     }
 
     return httpClient.request<ApiResponse<Product>>('/products', {
@@ -46,8 +46,8 @@ export const productsApi = {
       formData.append('description', data.description);
     }
     
-    if (data.image) {
-      formData.append('image', data.image);
+    if (data.images && data.images.length > 0) {
+      formData.append('image', data.images[0]);
     }
 
     return httpClient.request<ApiResponse<Product>>(`/products/${id}`, {

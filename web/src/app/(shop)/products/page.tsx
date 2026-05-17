@@ -17,12 +17,13 @@ export default async function PublicProductsPage({
   const resolvedParams = await searchParams;
   
   const queryParams: Record<string, string> = {};
-  if (typeof resolvedParams.q === 'string') queryParams.q = resolvedParams.q;
-  if (typeof resolvedParams.minPrice === 'string') queryParams.minPrice = resolvedParams.minPrice;
-  if (typeof resolvedParams.maxPrice === 'string') queryParams.maxPrice = resolvedParams.maxPrice;
-  if (typeof resolvedParams.category === 'string') queryParams.category = resolvedParams.category;
-  if (typeof resolvedParams.sort === 'string') queryParams.sort = resolvedParams.sort;
-  if (typeof resolvedParams.inStock === 'string') queryParams.inStock = resolvedParams.inStock;
+  
+  // Cleanly extract all string params
+  Object.entries(resolvedParams).forEach(([key, value]) => {
+    if (typeof value === 'string') {
+      queryParams[key] = value;
+    }
+  });
 
   // Server-side fetch
   let initialProducts: Product[] = [];

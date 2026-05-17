@@ -9,6 +9,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useCartStore } from "@/stores/cart-store";
+import { PLATFORM_ROLES } from "@/types";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -22,6 +23,8 @@ export function Navbar() {
   const { isAuthenticated, user, clearAuth } = useAuthStore();
   const cartItems = useCartStore((state) => state.items);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  
+  const isAdmin = user?.role && PLATFORM_ROLES.includes(user.role);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -135,11 +138,11 @@ export function Navbar() {
                       <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{user?.email}</p>
                     </div>
                     <Link 
-                      href="/dashboard" 
+                      href={isAdmin ? "/admin" : "/dashboard"} 
                       className="flex items-center gap-2 px-4 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
                       onClick={() => setIsDropdownOpen(false)}
                     >
-                      <LayoutDashboard className="h-4 w-4" /> Dashboard
+                      <LayoutDashboard className="h-4 w-4" /> {isAdmin ? "Admin Panel" : "Dashboard"}
                     </Link>
                     <Link 
                       href="/dashboard/profile" 

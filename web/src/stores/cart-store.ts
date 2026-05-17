@@ -1,78 +1,105 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-
-export interface CartProduct {
-  id: string;
-  name: string;
-  price: number;
-  imageUrl?: string;
-}
-
-export interface CartItem extends CartProduct {
-  quantity: number;
-}
+import { cartApi } from '@/lib/api/cart';
+import { CartItem } from '@/types';
+import { toast } from 'sonner';
 
 interface CartState {
   items: CartItem[];
+  subtotal: number;
+  itemCount: number;
+  isLoading: boolean;
+  
   // Actions
-  addItem: (product: CartProduct, quantity?: number) => void;
-  removeItem: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
-  clearCart: () => void;
-  // Computed (use these as regular selectors)
-  totalItems: () => number;
-  totalPrice: () => number;
+  fetchCart: () => Promise<void>;
+  addItem: (productId: string, quantity?: number) => Promise<void>;
+  removeItem: (itemId: string) => Promise<void>;
+  updateQuantity: (itemId: string, quantity: number) => Promise<void>;
+  clearCart: () => Promise<void>;
 }
 
-export const useCartStore = create<CartState>()(
-  persist(
-    (set, get) => ({
-      items: [],
+export const useCartStore = create<CartState>((set, get) => ({
+  items: [],
+  subtotal: 0,
+  itemCount: 0,
+  isLoading: false,
 
-      addItem: (product: CartProduct, quantity = 1) => {
-        set((state) => {
-          const existing = state.items.find((item) => item.id === product.id);
-          if (existing) {
-            return {
-              items: state.items.map((item) =>
-                item.id === product.id
-                  ? { ...item, quantity: item.quantity + quantity }
-                  : item
-              ),
-            };
-          }
-          return { items: [...state.items, { ...product, quantity }] };
+  fetchCart: async () => {
+    set({ isLoading: true });
+    try {
+      const res = await cartApi.getCart();
+      if (res.success) {
+        set({ 
+          items: res.data.items, 
+          subtotal: parseFloat(res.data.subtotal || '0'),
+          itemCount: res.data.itemCount
         });
-      },
-
-      removeItem: (productId: string) => {
-        set((state) => ({
-          items: state.items.filter((item) => item.id !== productId),
-        }));
-      },
-
-      updateQuantity: (productId: string, quantity: number) => {
-        if (quantity <= 0) {
-          get().removeItem(productId);
-          return;
-        }
-        set((state) => ({
-          items: state.items.map((item) =>
-            item.id === productId ? { ...item, quantity } : item
-          ),
-        }));
-      },
-
-      clearCart: () => set({ items: [] }),
-
-      totalItems: () => get().items.reduce((sum, item) => sum + item.quantity, 0),
-
-      totalPrice: () =>
-        get().items.reduce((sum, item) => sum + item.price * item.quantity, 0),
-    }),
-    {
-      name: 'gramoz-cart',
-      storage: createJSONStorage(() => localStorage),
+      }
+    } catch (error) {
+      console.error('Failed to fetch cart', error);
+    } finally {
+      set({ isLoading: false });
     }
-  )
-);
+  },
+
+  addItem: async (productId: string, quantity = 1) => {
+    set({ isLoading: true });
+    try {
+      const res = await cartApi.addItem(productId, quantity);
+      if (res.success) {
+        toast.success('Item added to cart');
+        await get().fetchCart();
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to add item to cart. Are you logged in?');
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  removeItem: async (itemId: string) => {
+    set({ isLoading: true });
+    try {
+      const res = await cartApi.removeItem(itemId);
+      if (res.success) {
+        toast.success('Item removed');
+        await get().fetchCart();
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to remove item');
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  updateQuantity: async (itemId: string, quantity: number) => {
+    if (quantity <= 0) {
+      return get().removeItem(itemId);
+    }
+    set({ isLoading: true });
+    try {
+      const res = await cartApi.updateItem(itemId, quantity);
+      if (res.success) {
+        await get().fetchCart();
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update quantity');
+      await get().fetchCart(); // Revert optimistic changes if any
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  clearCart: async () => {
+    set({ isLoading: true });
+    try {
+      const res = await cartApi.clearCart();
+      if (res.success) {
+        set({ items: [], subtotal: 0, itemCount: 0 });
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to clear cart');
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+}));

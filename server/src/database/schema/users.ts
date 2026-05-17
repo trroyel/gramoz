@@ -1,26 +1,47 @@
-import { boolean, index, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
+import { roleEnum } from './enums';
+import { relations } from 'drizzle-orm';
+import { addresses } from './addresses';
 
-export const users = pgTable('users', {
-  id: uuid().primaryKey().defaultRandom(),
+export const users = pgTable(
+  'users',
+  {
+    id: uuid().primaryKey().defaultRandom(),
 
-  email: varchar({ length: 255 }).notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+    email: varchar({ length: 255 }).notNull().unique(),
+    passwordHash: text('password_hash').notNull(),
 
-  fullName: varchar('full_name', { length: 150 }).notNull(),
-  phone: varchar({ length: 20 }),
+    fullName: varchar('full_name', { length: 150 }).notNull(),
+    phone: varchar({ length: 20 }),
 
-  isEmailVerified: boolean('is_email_verified').notNull().default(false),
-  isPhoneVerified: boolean('is_phone_verified').notNull().default(false),
+    role: roleEnum().notNull().default('customer'),
 
-  status: varchar({ length: 20 }).notNull().default('active'),
-  // active | suspended | deleted
+    isEmailVerified: boolean('is_email_verified').notNull().default(false),
+    isPhoneVerified: boolean('is_phone_verified').notNull().default(false),
 
-  lastLoginAt: timestamp('last_login_at'),
+    status: varchar({ length: 20 }).notNull().default('active'),
+    // active | suspended | deleted
 
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-  deletedAt: timestamp('deleted_at'),
-}, (table) => [index('idx_users_email').on(table.email)]);
+    lastLoginAt: timestamp('last_login_at'),
+
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at'),
+  },
+  (table) => [index('idx_users_email').on(table.email)],
+);
+
+export const usersRelations = relations(users, ({ many }) => ({
+  addresses: many(addresses),
+}));
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

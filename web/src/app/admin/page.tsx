@@ -1,60 +1,115 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Package, ShoppingCart, TrendingUp } from "lucide-react";
-
-const STATS = [
-  {
-    title: "Total Revenue",
-    value: "৳45,231",
-    change: "+20.1%",
-    icon: DollarSign,
-    color: "text-green-600 dark:text-green-500",
-    bg: "bg-green-100 dark:bg-green-900/20",
-  },
-  {
-    title: "Orders",
-    value: "+573",
-    change: "+201",
-    icon: ShoppingCart,
-    color: "text-blue-600 dark:text-blue-500",
-    bg: "bg-blue-100 dark:bg-blue-900/20",
-  },
-  {
-    title: "Products",
-    value: "24",
-    change: "+3",
-    icon: Package,
-    color: "text-orange-600 dark:text-orange-500",
-    bg: "bg-orange-100 dark:bg-orange-900/20",
-  },
-  {
-    title: "Active Views",
-    value: "1,234",
-    change: "+15%",
-    icon: TrendingUp,
-    color: "text-purple-600 dark:text-purple-500",
-    bg: "bg-purple-100 dark:bg-purple-900/20",
-  },
-];
-
-const RECENT_ORDERS = [
-  { id: "ORD-001", customer: "Rahim Uddin", date: "Today", total: "৳1,200", status: "Delivered" },
-  { id: "ORD-002", customer: "Karim Ali", date: "Today", total: "৳4,500", status: "Processing" },
-  { id: "ORD-003", customer: "Salma Begum", date: "Yesterday", total: "৳850", status: "Shipped" },
-  { id: "ORD-004", customer: "Anisur Rahman", date: "Yesterday", total: "৳3,200", status: "Delivered" },
-  { id: "ORD-005", customer: "Jahanara Khatun", date: "2 days ago", total: "৳450", status: "Cancelled" },
-];
+import { DollarSign, Package, ShoppingCart, TrendingUp, Loader2 } from "lucide-react";
+import { ordersApi } from "@/lib/api/orders";
+import { productsApi } from "@/lib/api/products";
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    totalOrders: 0,
+    totalProducts: 0,
+    recentOrders: [] as any[],
+  });
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        const [ordersRes, productsRes] = await Promise.all([
+          ordersApi.getAllAsAdmin(),
+          productsApi.getAll(),
+        ]);
+
+        let revenue = 0;
+        let ordersCount = 0;
+        let recent = [];
+
+        if (ordersRes.success && ordersRes.data) {
+          const orders = ordersRes.data;
+          ordersCount = orders.length;
+          
+          revenue = orders.reduce((sum, order) => {
+            if (order.status !== 'cancelled') {
+              return sum + parseFloat(order.totalAmount);
+            }
+            return sum;
+          }, 0);
+
+          recent = orders.slice(0, 5); // top 5 recent orders
+        }
+
+        let productsCount = 0;
+        if (productsRes.success && productsRes.data) {
+          productsCount = productsRes.data.length;
+        }
+
+        setStats({
+          totalRevenue: revenue,
+          totalOrders: ordersCount,
+          totalProducts: productsCount,
+          recentOrders: recent,
+        });
+
+      } catch (error) {
+        console.error("Failed to load dashboard data", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  const STATS_CARDS = [
+    {
+      title: "Total Revenue",
+      value: `৳${stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      icon: DollarSign,
+      color: "text-green-600 dark:text-green-500",
+      bg: "bg-green-100 dark:bg-green-900/20",
+    },
+    {
+      title: "Total Orders",
+      value: stats.totalOrders.toString(),
+      icon: ShoppingCart,
+      color: "text-blue-600 dark:text-blue-500",
+      bg: "bg-blue-100 dark:bg-blue-900/20",
+    },
+    {
+      title: "Total Products",
+      value: stats.totalProducts.toString(),
+      icon: Package,
+      color: "text-orange-600 dark:text-orange-500",
+      bg: "bg-orange-100 dark:bg-orange-900/20",
+    },
+    {
+      title: "Active Views",
+      value: "1,234",
+      icon: TrendingUp,
+      color: "text-purple-600 dark:text-purple-500",
+      bg: "bg-purple-100 dark:bg-purple-900/20",
+    },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-green-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-          Welcome back, {user?.fullName?.split(" ")[0] || "Entrepreneur"}! 👋
+          Welcome back, {user?.fullName?.split(" ")[0] || "Admin"}! 👋
         </h1>
         <p className="text-zinc-500 dark:text-zinc-400 mt-2">
           Here is what's happening with your store today.
@@ -62,7 +117,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {STATS.map((stat, i) => {
+        {STATS_CARDS.map((stat, i) => {
           const Icon = stat.icon;
           return (
             <Card key={i} className="border-0 shadow-sm">
@@ -76,9 +131,6 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stat.value}</div>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                  <span className="text-green-600 font-medium">{stat.change}</span> from last month
-                </p>
               </CardContent>
             </Card>
           );
@@ -103,24 +155,31 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y dark:divide-zinc-800">
-                  {RECENT_ORDERS.map((order) => (
-                    <tr key={order.id}>
-                      <td className="py-4 pr-4 font-medium">{order.id}</td>
-                      <td className="py-4 pr-4">{order.customer}</td>
-                      <td className="py-4 pr-4 text-zinc-500">{order.date}</td>
-                      <td className="py-4 pr-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium 
-                          ${order.status === 'Delivered' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : ''}
-                          ${order.status === 'Processing' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : ''}
-                          ${order.status === 'Shipped' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : ''}
-                          ${order.status === 'Cancelled' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : ''}
-                        `}>
-                          {order.status}
-                        </span>
-                      </td>
-                      <td className="py-4 text-right font-medium">{order.total}</td>
+                  {stats.recentOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-4 text-center text-zinc-500">No recent orders</td>
                     </tr>
-                  ))}
+                  ) : (
+                    stats.recentOrders.map((order) => (
+                      <tr key={order.id}>
+                        <td className="py-4 pr-4 font-medium">{order.id}</td>
+                        <td className="py-4 pr-4">{order.customerName || 'Unknown'}</td>
+                        <td className="py-4 pr-4 text-zinc-500">{new Date(order.createdAt).toLocaleDateString()}</td>
+                        <td className="py-4 pr-4">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize
+                            ${order.status === 'delivered' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : ''}
+                            ${order.status === 'processing' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : ''}
+                            ${order.status === 'shipped' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : ''}
+                            ${order.status === 'pending' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : ''}
+                            ${order.status === 'cancelled' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : ''}
+                          `}>
+                            {order.status}
+                          </span>
+                        </td>
+                        <td className="py-4 text-right font-medium">৳{order.totalAmount}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

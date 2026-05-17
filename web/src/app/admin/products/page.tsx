@@ -66,7 +66,7 @@ export default function ProductsPage() {
             Manage your product catalog
           </p>
         </div>
-        <Link href="/dashboard/products/new">
+        <Link href="/admin/products/new">
           <Button className="bg-orange-500 hover:bg-orange-600 text-white">
             <Plus className="w-4 h-4 mr-2" />
             Add New Product
@@ -82,7 +82,7 @@ export default function ProductsPage() {
         ) : products.length === 0 ? (
           <div className="text-center p-12 text-zinc-500">
             <p className="mb-4">No products found.</p>
-            <Link href="/dashboard/products/new">
+            <Link href="/admin/products/new">
               <Button variant="outline">Create your first product</Button>
             </Link>
           </div>
@@ -104,7 +104,7 @@ export default function ProductsPage() {
                     <td className="px-6 py-4 flex items-center gap-4">
                       <div className="w-12 h-12 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800 shrink-0">
                         <img 
-                          src={getImageUrl(product.imageUrl)} 
+                          src={getImageUrl(product.images?.[0])} 
                           alt={product.name} 
                           className="w-full h-full object-cover"
                         />
@@ -127,7 +127,7 @@ export default function ProductsPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <Link href={`/dashboard/products/${product.id}/edit`}>
+                        <Link href={`/admin/products/${product.id}/edit`}>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 hover:text-orange-500">
                             <Edit className="w-4 h-4" />
                           </Button>

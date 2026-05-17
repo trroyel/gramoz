@@ -19,7 +19,11 @@ export class RedisService implements OnModuleDestroy {
   }
 
   // Session management
-  async setSession(userId: string, token: string, expiresIn: string): Promise<void> {
+  async setSession(
+    userId: string,
+    token: string,
+    expiresIn: string,
+  ): Promise<void> {
     const ttl = this.parseDuration(expiresIn);
     await this.client.setex(`auth:session:${userId}`, ttl, token);
   }
@@ -33,7 +37,11 @@ export class RedisService implements OnModuleDestroy {
   }
 
   // Email verification code
-  async setVerificationCode(email: string, code: string, expiresIn: string): Promise<void> {
+  async setVerificationCode(
+    email: string,
+    code: string,
+    expiresIn: string,
+  ): Promise<void> {
     const ttl = this.parseDuration(expiresIn);
     await this.client.setex(`auth:verify:${email}`, ttl, code);
   }
@@ -47,7 +55,11 @@ export class RedisService implements OnModuleDestroy {
   }
 
   // Password reset code
-  async setResetCode(email: string, code: string, expiresIn: string): Promise<void> {
+  async setResetCode(
+    email: string,
+    code: string,
+    expiresIn: string,
+  ): Promise<void> {
     const ttl = this.parseDuration(expiresIn);
     await this.client.setex(`auth:reset:${email}`, ttl, code);
   }

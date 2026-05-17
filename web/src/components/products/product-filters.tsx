@@ -7,9 +7,8 @@ import { Label } from "@/components/ui/label";
 import { X } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Button } from "@/components/ui/button";
-
-// Optional: If you want to fetch dynamic categories from API later, you can replace this static list.
-const CATEGORIES = ["All", "Clothing", "Electronics", "Food", "Handicrafts", "Accessories", "Uncategorized"];
+import { categoriesApi } from "@/lib/api/categories";
+import { Category } from "@/types";
 
 export function ProductFilters() {
   const router = useRouter();
@@ -23,6 +22,16 @@ export function ProductFilters() {
   const [inStockOnly, setInStockOnly] = useState(() => searchParams.get("inStock") === "true");
   const debouncedMinPrice = useDebounce(minPrice, 500);
   const debouncedMaxPrice = useDebounce(maxPrice, 500);
+
+  const [categories, setCategories] = useState<Category[]>([]);
+
+  useEffect(() => {
+    categoriesApi.getAll().then((res) => {
+      if (res.success) {
+        setCategories(res.data);
+      }
+    });
+  }, []);
 
   // Push new URL when filter values change
   useEffect(() => {
@@ -80,8 +89,11 @@ export function ProductFilters() {
           onChange={(e) => setCategory(e.target.value)}
           className="flex h-10 w-full items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent dark:border-zinc-800 dark:bg-zinc-950"
         >
-          {CATEGORIES.map(cat => (
-            <option key={cat} value={cat}>{cat}</option>
+          <option value="All">All Categories</option>
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.name}
+            </option>
           ))}
         </select>
       </div>
