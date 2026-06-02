@@ -4,6 +4,7 @@ import {
   pgTable,
   timestamp,
   uuid,
+  varchar,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { users } from './users';
@@ -23,6 +24,9 @@ export const orders = pgTable('orders', {
   shippingAddressId: uuid('shipping_address_id')
     .notNull()
     .references(() => addresses.id),
+
+  consignmentId: varchar('consignment_id', { length: 255 }),
+  trackingUrl: varchar('tracking_url', { length: 1024 }),
 
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

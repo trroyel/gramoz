@@ -71,6 +71,20 @@ export class OrdersController {
     });
   }
 
+  @Get('admin/:id')
+  @UseGuards(RolesGuard)
+  @Roles(...PLATFORM_ROLES)
+  async getOrderDetailsAsAdmin(
+    @Param('id') id: string,
+    @Res() res: FastifyReply,
+  ) {
+    const orderDetails = await this.ordersService.getOrderDetailsAsAdmin(id);
+    return res.send({
+      success: true,
+      data: orderDetails,
+    });
+  }
+
   @Patch('admin/:id/status')
   @UseGuards(RolesGuard)
   @Roles(...PLATFORM_ROLES)

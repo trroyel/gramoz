@@ -29,6 +29,13 @@
       "when": 1779010320345,
       "tag": "0003_fresh_emma_frost",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779041361894,
+      "tag": "0004_glossy_ego",
+      "breakpoints": true
     }
   ]
 }

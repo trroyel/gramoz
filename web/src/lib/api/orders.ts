@@ -23,6 +23,12 @@ class OrdersApi extends HttpClient {
     });
   }
 
+  async getAdminOrder(id: string): Promise<ApiResponse<any>> {
+    return this.request<ApiResponse<any>>(`/orders/admin/${id}`, {
+      method: 'GET',
+    });
+  }
+
   async updateStatus(id: string, status: string): Promise<ApiResponse<any>> {
     return this.request<ApiResponse<any>>(`/orders/admin/${id}/status`, {
       method: 'PATCH',

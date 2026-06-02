@@ -9,11 +9,13 @@ import { eq, and, desc } from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { CourierService } from '../courier/courier.service';
 
 @Injectable()
 export class OrdersService {
   constructor(
     @Inject(DATABASE) private readonly db: NodePgDatabase<typeof schema>,
+    private readonly courierService: CourierService,
   ) {}
 
   async createOrderFromCart(userId: string, dto: CreateOrderDto) {
@@ -138,6 +140,44 @@ export class OrdersService {
     return { ...order, items };
   }
 
+  async getOrderDetailsAsAdmin(orderId: string) {
+    const [order] = await this.db
+      .select({
+        id: schema.orders.id,
+        totalAmount: schema.orders.totalAmount,
+        status: schema.orders.status,
+        createdAt: schema.orders.createdAt,
+        consignmentId: schema.orders.consignmentId,
+        trackingUrl: schema.orders.trackingUrl,
+        customerName: schema.users.fullName,
+        customerEmail: schema.users.email,
+        customerPhone: schema.users.phone,
+        addressLine1: schema.addresses.addressLine1,
+        city: schema.addresses.city,
+      })
+      .from(schema.orders)
+      .leftJoin(schema.users, eq(schema.orders.userId, schema.users.id))
+      .leftJoin(schema.addresses, eq(schema.orders.shippingAddressId, schema.addresses.id))
+      .where(eq(schema.orders.id, orderId));
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const items = await this.db
+      .select({
+        id: schema.orderItems.id,
+        quantity: schema.orderItems.quantity,
+        unitPrice: schema.orderItems.unitPrice,
+        productName: schema.products.name,
+      })
+      .from(schema.orderItems)
+      .leftJoin(schema.products, eq(schema.orderItems.productId, schema.products.id))
+      .where(eq(schema.orderItems.orderId, orderId));
+
+    return { ...order, items };
+  }
+
   async getAllOrdersAsAdmin() {
     return this.db
       .select({
@@ -154,9 +194,48 @@ export class OrdersService {
   }
 
   async updateOrderStatus(id: string, status: string) {
+    let trackingUpdates = {};
+
+    // If order is marked as 'shipped', generate a mock consignment via Courier Service
+    if (status === 'shipped') {
+      const orderDetails = await this.getOrderDetails(undefined as any, id); // We bypass userId check by finding the order another way, but let's just fetch it directly to be safe
+      
+      const [order] = await this.db.select().from(schema.orders).where(eq(schema.orders.id, id));
+      if (!order) throw new NotFoundException('Order not found');
+
+      const [user] = await this.db.select().from(schema.users).where(eq(schema.users.id, order.userId));
+      const [address] = await this.db.select().from(schema.addresses).where(eq(schema.addresses.id, order.shippingAddressId));
+
+      // Calculate quantity
+      const items = await this.db.select().from(schema.orderItems).where(eq(schema.orderItems.orderId, id));
+      const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+
+      const consignment = await this.courierService.createConsignment({
+        orderId: id,
+        recipientName: user?.fullName || 'Customer',
+        recipientPhone: user?.phone || '0000000',
+        recipientAddress: address?.addressLine1 || 'Unknown',
+        recipientCity: address?.city || 'Unknown',
+        amountToCollect: parseFloat(order.totalAmount),
+        itemQuantity: totalQuantity,
+        itemWeight: 1, // Mock weight
+      });
+
+      if (consignment.success) {
+        trackingUpdates = {
+          consignmentId: consignment.consignmentId,
+          trackingUrl: consignment.trackingUrl,
+        };
+      }
+    }
+
     const [updated] = await this.db
       .update(schema.orders)
-      .set({ status: status as any })
+      .set({ 
+        status: status as any,
+        ...trackingUpdates,
+        updatedAt: new Date(),
+      })
       .where(eq(schema.orders.id, id))
       .returning();
 
