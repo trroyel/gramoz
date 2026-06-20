@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
@@ -29,6 +29,22 @@ export class UserRepository {
       .select()
       .from(schema.users)
       .where(eq(schema.users.email, email));
+    return user;
+  }
+
+  async findByProviderId(
+    provider: string,
+    providerId: string,
+  ): Promise<User | undefined> {
+    const [user] = await this.db
+      .select()
+      .from(schema.users)
+      .where(
+        and(
+          eq(schema.users.provider, provider),
+          eq(schema.users.providerId, providerId),
+        ),
+      );
     return user;
   }
 

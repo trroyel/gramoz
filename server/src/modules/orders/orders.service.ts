@@ -1,25 +1,24 @@
 import {
   Injectable,
   Inject,
-  NotFoundException,
-  BadRequestException,
 } from '@nestjs/common';
+import { EntityNotFoundError, InvalidOperationError, InsufficientStockError } from '../../common/errors/domain.errors';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { CourierService } from '../courier/courier.service';
+import { PromosService } from '../promos/promos.service';
 
 @Injectable()
 export class OrdersService {
   constructor(
     @Inject(DATABASE) private readonly db: NodePgDatabase<typeof schema>,
-    private readonly courierService: CourierService,
+    private readonly promosService: PromosService,
   ) {}
 
-  async createOrderFromCart(userId: string, dto: CreateOrderDto) {
-    // 1. Fetch user's cart
+  async createOrderFromCart(userId: string, dto: CreateOrderDto): Promise<schema.Order> {
+    // 1. Fetch user's cart with product details
     const cartItems = await this.db
       .select({
         id: schema.cartItems.id,
@@ -27,42 +26,79 @@ export class OrdersService {
         quantity: schema.cartItems.quantity,
         productPrice: schema.products.price,
         productStock: schema.products.stock,
+        productName: schema.products.name,
       })
       .from(schema.cartItems)
-      .leftJoin(schema.products, eq(schema.cartItems.productId, schema.products.id))
+      .leftJoin(
+        schema.products,
+        eq(schema.cartItems.productId, schema.products.id),
+      )
       .where(eq(schema.cartItems.userId, userId));
 
     if (cartItems.length === 0) {
-      throw new BadRequestException('Your cart is empty');
+      throw new InvalidOperationError('Your cart is empty');
     }
 
-    // 2. Validate stock for all items
+    // 2. Preliminary stock check (optimistic, real lock happens inside transaction)
     for (const item of cartItems) {
-      if (item.productStock < item.quantity) {
-        throw new BadRequestException(`Insufficient stock for product ID: ${item.productId}`);
+      if ((item.productStock ?? 0) < item.quantity) {
+        throw new InsufficientStockError(
+          `Insufficient stock for "${item.productName}". Available: ${item.productStock}`,
+        );
       }
     }
 
-    // Calculate total amount
-    const totalAmount = cartItems.reduce((sum, item) => {
-      return sum + parseFloat(item.productPrice ?? '0') * item.quantity;
-    }, 0);
+    let totalAmount =
+      cartItems.reduce((sum, item) => {
+        const priceInCents = Math.round(
+          parseFloat(item.productPrice ?? '0') * 100,
+        );
+        return sum + priceInCents * item.quantity;
+      }, 0) / 100;
 
-    // 3. Perform everything in a database transaction
-    return await this.db.transaction(async (tx) => {
-      // Create shipping address
-      const [address] = await tx
-        .insert(schema.addresses)
-        .values({
-          userId,
-          title: 'Default Address',
-          addressLine1: dto.addressLine1,
-          city: dto.city,
-          isDefault: true,
-        })
-        .returning();
+    let appliedPromoId: string | null = null;
+    let discountAmount = 0;
 
-      // Create the order
+    if (dto.promoCode) {
+      const promoResult = await this.promosService.validate({
+        code: dto.promoCode,
+        subtotal: totalAmount,
+      });
+      appliedPromoId = promoResult.promoId;
+      discountAmount = promoResult.discountAmount;
+      totalAmount -= discountAmount;
+    }
+
+    const result = await this.db.transaction(async (tx) => {
+      // 3. Reuse existing address if it matches, otherwise create a new one
+      const [existingAddress] = await tx
+        .select()
+        .from(schema.addresses)
+        .where(
+          and(
+            eq(schema.addresses.userId, userId),
+            eq(schema.addresses.addressLine1, dto.addressLine1),
+            eq(schema.addresses.city, dto.city),
+          ),
+        )
+        .limit(1);
+
+      const address =
+        existingAddress ??
+        (
+          await tx
+            .insert(schema.addresses)
+            .values({
+              userId,
+              title: 'Shipping Address',
+              addressLine1: dto.addressLine1,
+              city: dto.city,
+              isDefault: false,
+            })
+            .returning()
+        )[0];
+
+      // 4. Create the order
       const [order] = await tx
         .insert(schema.orders)
         .values({
@@ -70,12 +106,14 @@ export class OrdersService {
           shippingAddressId: address.id,
           totalAmount: totalAmount.toFixed(2),
           status: 'pending',
+          promoId: appliedPromoId,
+          discountAmount: discountAmount.toString(),
         })
         .returning();
 
-      // Create order items, inventory transactions, and update stock
+      // 5. Atomic stock deduction — if any product was concurrently bought down,
+      //    the WHERE clause (stock >= qty) will match 0 rows and we abort.
       for (const item of cartItems) {
-        // Create order item
         await tx.insert(schema.orderItems).values({
           orderId: order.id,
           productId: item.productId,
@@ -83,47 +121,130 @@ export class OrdersService {
           unitPrice: item.productPrice ?? '0',
         });
 
-        // Update product stock
-        await tx
+        const [updated] = await tx
           .update(schema.products)
-          .set({ stock: item.productStock - item.quantity })
-          .where(eq(schema.products.id, item.productId));
+          .set({
+            stock: sql`${schema.products.stock} - ${item.quantity}`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.products.id, item.productId!),
+              // This WHERE clause is the lock — prevents overselling
+              sql`${schema.products.stock} >= ${item.quantity}`,
+            ),
+          )
+          .returning({ stock: schema.products.stock });
 
-        // Create inventory transaction (out)
+        if (!updated) {
+          // Stock was insufficient by the time we got the lock — abort
+          throw new InsufficientStockError(
+            `"${item.productName}" just sold out. Please remove it from your cart.`,
+          );
+        }
+
         await tx.insert(schema.inventoryTransactions).values({
           productId: item.productId,
           type: 'out',
           quantity: item.quantity,
           referenceId: order.id,
-          notes: 'Order placed',
+          notes: `Order placed`,
         });
       }
 
-      // Clear the cart
+      // 6. Clear the cart
       await tx
         .delete(schema.cartItems)
         .where(eq(schema.cartItems.userId, userId));
 
-      return order;
+      // 8. Increment promo usage if applicable
+      if (appliedPromoId) {
+        await tx
+          .update(schema.promos)
+          .set({ currentUses: sql`${schema.promos.currentUses} + 1` })
+          .where(eq(schema.promos.id, appliedPromoId));
+      }
+
+      // Fetch user info inside the transaction so it's available for the
+      // email outbox payload without an extra round-trip after commit.
+      const [user] = await tx
+        .select({ email: schema.users.email, fullName: schema.users.fullName })
+        .from(schema.users)
+        .where(eq(schema.users.id, userId));
+
+      return { order, items: cartItems, user };
     });
+
+    // 7. Enqueue order confirmation email via the outbox.
+    //    The payload is self-contained — the processor won't need to re-query.
+    if (result.user) {
+      const emailItems = result.items.map((i) => ({
+        productName: i.productName ?? 'Product',
+        quantity: i.quantity,
+        unitPrice: i.productPrice ?? '0',
+      }));
+      await this.db.insert(schema.outboxEvents).values({
+        type: 'SEND_ORDER_CONFIRMATION',
+        payload: {
+          email: result.user.email,
+          fullName: result.user.fullName,
+          orderId: result.order.id,
+          items: emailItems,
+          totalAmount: result.order.totalAmount,
+        },
+      });
+    }
+
+    // 8. Enqueue low-stock check via the outbox.
+    await this.db.insert(schema.outboxEvents).values({
+      type: 'SEND_LOW_STOCK_ALERT',
+      payload: { productIds: result.items.map((i) => i.productId!) },
+    });
+
+    return result.order;
   }
 
-  async getUserOrders(userId: string) {
-    return this.db
-      .select()
-      .from(schema.orders)
-      .where(eq(schema.orders.userId, userId))
-      .orderBy(schema.orders.createdAt);
+
+
+  async getUserOrders(userId: string, page = 1, limit = 10): Promise<any[]> {
+    const offset = (Math.max(1, page) - 1) * Math.min(50, limit);
+
+    const ordersWithPayments = await this.db.query.orders.findMany({
+      where: eq(schema.orders.userId, userId),
+      orderBy: [desc(schema.orders.createdAt)],
+      limit,
+      offset,
+      with: {
+        payments: {
+          orderBy: [desc(schema.payments.createdAt)],
+          limit: 1,
+        },
+      },
+    });
+
+    return ordersWithPayments.map((order) => ({
+      ...order,
+      payment: order.payments[0] || null,
+      payments: undefined, // remove the array
+    }));
   }
 
-  async getOrderDetails(userId: string, orderId: string) {
-    const [order] = await this.db
-      .select()
-      .from(schema.orders)
-      .where(and(eq(schema.orders.id, orderId), eq(schema.orders.userId, userId)));
+  async getOrderDetails(userId: string, orderId: string): Promise<any> {
+    const order = await this.db.query.orders.findFirst({
+      where: and(
+        eq(schema.orders.id, orderId),
+        eq(schema.orders.userId, userId),
+      ),
+      with: {
+        payments: {
+          orderBy: [desc(schema.payments.createdAt)],
+          limit: 1,
+        },
+      },
+    });
 
     if (!order) {
-      throw new NotFoundException('Order not found');
+      throw new EntityNotFoundError('Order not found');
     }
 
     const items = await this.db
@@ -134,13 +255,17 @@ export class OrdersService {
         productName: schema.products.name,
       })
       .from(schema.orderItems)
-      .leftJoin(schema.products, eq(schema.orderItems.productId, schema.products.id))
+      .leftJoin(
+        schema.products,
+        eq(schema.orderItems.productId, schema.products.id),
+      )
       .where(eq(schema.orderItems.orderId, orderId));
 
-    return { ...order, items };
+    const { payments, ...orderData } = order;
+    return { ...orderData, payment: payments[0] || null, items };
   }
 
-  async getOrderDetailsAsAdmin(orderId: string) {
+  async getOrderDetailsAsAdmin(orderId: string): Promise<any> {
     const [order] = await this.db
       .select({
         id: schema.orders.id,
@@ -157,11 +282,14 @@ export class OrdersService {
       })
       .from(schema.orders)
       .leftJoin(schema.users, eq(schema.orders.userId, schema.users.id))
-      .leftJoin(schema.addresses, eq(schema.orders.shippingAddressId, schema.addresses.id))
+      .leftJoin(
+        schema.addresses,
+        eq(schema.orders.shippingAddressId, schema.addresses.id),
+      )
       .where(eq(schema.orders.id, orderId));
 
     if (!order) {
-      throw new NotFoundException('Order not found');
+      throw new EntityNotFoundError('Order not found');
     }
 
     const items = await this.db
@@ -172,76 +300,96 @@ export class OrdersService {
         productName: schema.products.name,
       })
       .from(schema.orderItems)
-      .leftJoin(schema.products, eq(schema.orderItems.productId, schema.products.id))
+      .leftJoin(
+        schema.products,
+        eq(schema.orderItems.productId, schema.products.id),
+      )
       .where(eq(schema.orderItems.orderId, orderId));
 
-    return { ...order, items };
+    const payments = await this.db
+      .select()
+      .from(schema.payments)
+      .where(eq(schema.payments.orderId, orderId))
+      .orderBy(desc(schema.payments.createdAt))
+      .limit(1);
+
+    return { ...order, items, payment: payments[0] || null };
   }
 
-  async getAllOrdersAsAdmin() {
-    return this.db
-      .select({
-        id: schema.orders.id,
-        userId: schema.orders.userId,
-        totalAmount: schema.orders.totalAmount,
-        status: schema.orders.status,
-        createdAt: schema.orders.createdAt,
-        customerName: schema.users.fullName,
-      })
-      .from(schema.orders)
-      .leftJoin(schema.users, eq(schema.orders.userId, schema.users.id))
-      .orderBy(desc(schema.orders.createdAt));
+  async getAllOrdersAsAdmin(page = 1, limit = 20): Promise<any[]> {
+    const offset = (Math.max(1, page) - 1) * Math.min(100, limit);
+    const ordersWithRelations = await this.db.query.orders.findMany({
+      orderBy: [desc(schema.orders.createdAt)],
+      limit,
+      offset,
+      with: {
+        user: {
+          columns: {
+            fullName: true,
+          },
+        },
+        payments: {
+          orderBy: [desc(schema.payments.createdAt)],
+          limit: 1,
+        },
+      },
+    });
+
+    return ordersWithRelations.map((order) => {
+      const { user, payments, ...orderData } = order;
+      return {
+        ...orderData,
+        customerName: user?.fullName,
+        payment: payments[0] || null,
+      };
+    });
   }
 
-  async updateOrderStatus(id: string, status: string) {
-    let trackingUpdates = {};
+  async updateOrderStatus(id: string, status: string): Promise<schema.Order> {
+    // Validate status value against the enum to prevent arbitrary string injection
+    const validStatuses = [
+      'pending',
+      'processing',
+      'shipped',
+      'delivered',
+      'cancelled',
+    ];
+    if (!validStatuses.includes(status)) {
+      throw new InvalidOperationError(
+        `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+      );
+    }
 
-    // If order is marked as 'shipped', generate a mock consignment via Courier Service
-    if (status === 'shipped') {
-      const orderDetails = await this.getOrderDetails(undefined as any, id); // We bypass userId check by finding the order another way, but let's just fetch it directly to be safe
-      
-      const [order] = await this.db.select().from(schema.orders).where(eq(schema.orders.id, id));
-      if (!order) throw new NotFoundException('Order not found');
+    // Run everything inside a single transaction so the status update and
+    // the outbox event are committed atomically.
+    const updated = await this.db.transaction(async (tx) => {
+      const [order] = await tx
+        .update(schema.orders)
+        .set({
+          status: status as schema.Order['status'],
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.orders.id, id))
+        .returning();
 
-      const [user] = await this.db.select().from(schema.users).where(eq(schema.users.id, order.userId));
-      const [address] = await this.db.select().from(schema.addresses).where(eq(schema.addresses.id, order.shippingAddressId));
-
-      // Calculate quantity
-      const items = await this.db.select().from(schema.orderItems).where(eq(schema.orderItems.orderId, id));
-      const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-
-      const consignment = await this.courierService.createConsignment({
-        orderId: id,
-        recipientName: user?.fullName || 'Customer',
-        recipientPhone: user?.phone || '0000000',
-        recipientAddress: address?.addressLine1 || 'Unknown',
-        recipientCity: address?.city || 'Unknown',
-        amountToCollect: parseFloat(order.totalAmount),
-        itemQuantity: totalQuantity,
-        itemWeight: 1, // Mock weight
-      });
-
-      if (consignment.success) {
-        trackingUpdates = {
-          consignmentId: consignment.consignmentId,
-          trackingUrl: consignment.trackingUrl,
-        };
+      if (!order) {
+        throw new EntityNotFoundError('Order not found');
       }
-    }
 
-    const [updated] = await this.db
-      .update(schema.orders)
-      .set({ 
-        status: status as any,
-        ...trackingUpdates,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.orders.id, id))
-      .returning();
+      // If the order is being marked as shipped, enqueue a courier consignment
+      // job in the outbox — same transaction guarantees it won't be lost.
+      if (status === 'shipped') {
+        await tx.insert(schema.outboxEvents).values({
+          type: 'CREATE_CONSIGNMENT',
+          payload: { orderId: id },
+          status: 'pending',
+        });
+      }
 
-    if (!updated) {
-      throw new NotFoundException('Order not found');
-    }
+      return order;
+    });
+
     return updated;
   }
 }
+

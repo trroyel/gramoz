@@ -1,17 +1,53 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, ilike, and, gte, lte, desc, asc } from 'drizzle-orm';
+import {
+  eq,
+  ilike,
+  and,
+  gte,
+  lte,
+  desc,
+  asc,
+  isNull,
+  SQL,
+  or,
+} from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
 import { CreateProductDto } from './dto/create-product.dto';
+import { RedisService } from '../../cache/redis.service';
+
+/** Matches the standard xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx UUID format */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type ProductWithCategory = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  price: string;
+  stock: number;
+  unit: string | null;
+  images: any;
+  status: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+};
 
 @Injectable()
 export class ProductsService {
   constructor(
     @Inject(DATABASE) private readonly db: NodePgDatabase<typeof schema>,
+    private readonly redisService: RedisService,
   ) {}
 
-  async create(createProductDto: CreateProductDto, imageUrl?: string) {
+  async create(
+    createProductDto: CreateProductDto,
+    imageUrl?: string,
+  ): Promise<schema.Product> {
     const slug = createProductDto.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -24,6 +60,7 @@ export class ProductsService {
       description: createProductDto.description,
       price: createProductDto.price.toString(),
       stock: createProductDto.stock,
+      unit: createProductDto.unit ?? 'piece',
       categoryId: createProductDto.categoryId,
       images: imageUrl ? [{ url: imageUrl }] : [],
     };
@@ -35,16 +72,38 @@ export class ProductsService {
     return product;
   }
 
-  async findAll(query?: any) {
-    let qb = this.db.select().from(schema.products);
-
-    const conditions = [];
+  async findAll(query?: {
+    q?: string;
+    category?: string;
+    inStock?: string;
+    minPrice?: string;
+    maxPrice?: string;
+    sort?: string;
+    page?: string;
+    limit?: string;
+  }): Promise<ProductWithCategory[]> {
+    // Always exclude soft-deleted and non-active products from the shop listing
+    const conditions: SQL[] = [
+      isNull(schema.products.deletedAt),
+      eq(schema.products.status, 'active'),
+    ];
 
     if (query?.q) {
       conditions.push(ilike(schema.products.name, `%${query.q}%`));
     }
     if (query?.category && query.category !== 'All') {
-      conditions.push(eq(schema.products.categoryId, query.category));
+      if (UUID_RE.test(query.category)) {
+        // Frontend passed a proper UUID — filter by categoryId directly
+        conditions.push(eq(schema.products.categoryId, query.category));
+      } else {
+        // Fallback: treat as category name or slug (case-insensitive)
+        conditions.push(
+          or(
+            ilike(schema.categories.name, query.category),
+            ilike(schema.categories.slug, query.category),
+          )!,
+        );
+      }
     }
     if (query?.inStock === 'true') {
       conditions.push(gte(schema.products.stock, 1));
@@ -56,27 +115,22 @@ export class ProductsService {
       conditions.push(lte(schema.products.price, query.maxPrice));
     }
 
-    if (conditions.length > 0) {
-      // @ts-ignore
-      qb = qb.where(and(...conditions));
-    }
+    // Pagination
+    const page = Math.max(1, parseInt(query?.page ?? '1', 10));
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(query?.limit ?? '20', 10)),
+    );
+    const offset = (page - 1) * limit;
 
-    if (query?.sort === 'price_asc') {
-      // @ts-ignore
-      qb = qb.orderBy(asc(schema.products.price));
-    } else if (query?.sort === 'price_desc') {
-      // @ts-ignore
-      qb = qb.orderBy(desc(schema.products.price));
-    } else {
-      // @ts-ignore
-      qb = qb.orderBy(desc(schema.products.createdAt));
-    }
+    const orderBy =
+      query?.sort === 'price_asc'
+        ? asc(schema.products.price)
+        : query?.sort === 'price_desc'
+          ? desc(schema.products.price)
+          : desc(schema.products.createdAt);
 
-    return qb;
-  }
-
-  async findOne(id: string) {
-    const [product] = await this.db
+    return this.db
       .select({
         id: schema.products.id,
         name: schema.products.name,
@@ -84,6 +138,7 @@ export class ProductsService {
         description: schema.products.description,
         price: schema.products.price,
         stock: schema.products.stock,
+        unit: schema.products.unit,
         images: schema.products.images,
         status: schema.products.status,
         categoryId: schema.products.categoryId,
@@ -92,12 +147,59 @@ export class ProductsService {
         updatedAt: schema.products.updatedAt,
       })
       .from(schema.products)
-      .leftJoin(schema.categories, eq(schema.products.categoryId, schema.categories.id))
+      .leftJoin(
+        schema.categories,
+        eq(schema.products.categoryId, schema.categories.id),
+      )
+      .where(and(...conditions))
+      .orderBy(orderBy)
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async findOne(id: string): Promise<ProductWithCategory | undefined> {
+    const cacheKey = `product:${id}`;
+    const cached = await this.redisService.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+
+    const [product] = await this.db
+      .select({
+        id: schema.products.id,
+        name: schema.products.name,
+        slug: schema.products.slug,
+        description: schema.products.description,
+        price: schema.products.price,
+        stock: schema.products.stock,
+        unit: schema.products.unit,
+        images: schema.products.images,
+        status: schema.products.status,
+        categoryId: schema.products.categoryId,
+        categoryName: schema.categories.name,
+        createdAt: schema.products.createdAt,
+        updatedAt: schema.products.updatedAt,
+      })
+      .from(schema.products)
+      .leftJoin(
+        schema.categories,
+        eq(schema.products.categoryId, schema.categories.id),
+      )
       .where(eq(schema.products.id, id));
+
+    if (product) {
+      // Cache for 5 minutes (300 seconds)
+      await this.redisService.set(cacheKey, JSON.stringify(product), 300);
+    }
+    
     return product;
   }
 
-  async update(id: string, data: Partial<CreateProductDto>, imageUrl?: string) {
+  async update(
+    id: string,
+    data: Partial<CreateProductDto>,
+    imageUrl?: string,
+  ): Promise<schema.Product> {
     const updateData: Partial<schema.NewProduct> = {};
     if (data.name) updateData.name = data.name;
     if (data.description !== undefined)
@@ -105,21 +207,31 @@ export class ProductsService {
     if (data.price !== undefined) updateData.price = data.price.toString();
     if (data.stock !== undefined) updateData.stock = data.stock;
     if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
-    if (imageUrl !== undefined) updateData.images = imageUrl ? [{ url: imageUrl }] : [];
+    if (data.unit !== undefined) updateData.unit = data.unit;
+    if (imageUrl !== undefined)
+      updateData.images = imageUrl ? [{ url: imageUrl }] : [];
 
     const [product] = await this.db
       .update(schema.products)
       .set({ ...updateData, updatedAt: new Date() })
       .where(eq(schema.products.id, id))
       .returning();
+
+    // Invalidate the specific product cache
+    await this.redisService.del(`product:${id}`);
+
     return product;
   }
 
-  async delete(id: string) {
+  async delete(id: string): Promise<schema.Product> {
     const [product] = await this.db
       .delete(schema.products)
       .where(eq(schema.products.id, id))
       .returning();
+
+    // Invalidate the specific product cache
+    await this.redisService.del(`product:${id}`);
+
     return product;
   }
 }

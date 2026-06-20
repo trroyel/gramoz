@@ -71,4 +71,9 @@ export const authApi = {
     httpClient.request<ApiResponse<User>>('/auth/me', {
       method: 'GET',
     }),
+
+  logout: () =>
+    httpClient.request<ApiResponse>('/auth/logout', {
+      method: 'POST',
+    }),
 };

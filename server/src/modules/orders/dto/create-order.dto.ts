@@ -10,7 +10,7 @@ export class CreateOrderDto {
   @IsString()
   phone: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
-  couponId?: string; // reserved for future coupon support
+  promoCode?: string;
 }

@@ -4,12 +4,11 @@ import {
   Post,
   Body,
   Param,
-  Res,
   UseGuards,
-  HttpStatus,
   Patch,
 } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
+import { Throttle } from '@nestjs/throttler';
+
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
@@ -24,65 +23,45 @@ import type { User } from '@database/schema';
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
+  // Tight limit — checkout hits DB, stock, inventory, and external email on every call.
+  // 5 per minute per IP is enough for any real user; stops abuse and double-submit spam.
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @Post('checkout')
-  async checkout(
-    @CurrentUser() user: User,
-    @Body() dto: CreateOrderDto,
-    @Res() res: FastifyReply,
-  ) {
+  async checkout(@CurrentUser() user: User, @Body() dto: CreateOrderDto) {
     const order = await this.ordersService.createOrderFromCart(user.id, dto);
-    return res.status(HttpStatus.CREATED).send({
+    return {
       success: true,
       message: 'Order created successfully',
       data: order,
-    });
+    };
   }
 
   @Get()
-  async getUserOrders(@CurrentUser() user: User, @Res() res: FastifyReply) {
+  async getUserOrders(@CurrentUser() user: User) {
     const orders = await this.ordersService.getUserOrders(user.id);
-    return res.send({
-      success: true,
-      data: orders,
-    });
+    return orders;
   }
 
   @Get(':id')
-  async getOrderDetails(
-    @CurrentUser() user: User,
-    @Param('id') id: string,
-    @Res() res: FastifyReply,
-  ) {
+  async getOrderDetails(@CurrentUser() user: User, @Param('id') id: string) {
     const orderDetails = await this.ordersService.getOrderDetails(user.id, id);
-    return res.send({
-      success: true,
-      data: orderDetails,
-    });
+    return orderDetails;
   }
 
   @Get('admin/all')
   @UseGuards(RolesGuard)
   @Roles(...PLATFORM_ROLES)
-  async getAllOrdersAsAdmin(@Res() res: FastifyReply) {
+  async getAllOrdersAsAdmin() {
     const orders = await this.ordersService.getAllOrdersAsAdmin();
-    return res.send({
-      success: true,
-      data: orders,
-    });
+    return orders;
   }
 
   @Get('admin/:id')
   @UseGuards(RolesGuard)
   @Roles(...PLATFORM_ROLES)
-  async getOrderDetailsAsAdmin(
-    @Param('id') id: string,
-    @Res() res: FastifyReply,
-  ) {
+  async getOrderDetailsAsAdmin(@Param('id') id: string) {
     const orderDetails = await this.ordersService.getOrderDetailsAsAdmin(id);
-    return res.send({
-      success: true,
-      data: orderDetails,
-    });
+    return orderDetails;
   }
 
   @Patch('admin/:id/status')
@@ -91,13 +70,11 @@ export class OrdersController {
   async updateOrderStatus(
     @Param('id') id: string,
     @Body('status') status: string,
-    @Res() res: FastifyReply,
   ) {
     const updated = await this.ordersService.updateOrderStatus(id, status);
-    return res.send({
-      success: true,
+    return {
       message: 'Order status updated',
       data: updated,
-    });
+    };
   }
 }

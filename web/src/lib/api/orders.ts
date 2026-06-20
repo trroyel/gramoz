@@ -2,7 +2,7 @@ import { HttpClient } from '../http-clients';
 import { ApiResponse, Order } from '@/types';
 
 class OrdersApi extends HttpClient {
-  async checkout(payload: { addressLine1: string; city: string; phone: string }): Promise<ApiResponse<Order>> {
+  async checkout(payload: { addressLine1: string; city: string; phone: string; promoCode?: string | null }): Promise<ApiResponse<Order>> {
     return this.request<ApiResponse<Order>>('/orders/checkout', {
       method: 'POST',
       body: JSON.stringify(payload),

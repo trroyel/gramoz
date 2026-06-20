@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Package, Eye, X, MapPin, Truck } from "lucide-react";
+import { Loader2, Package, Eye, X, MapPin, Truck, ShoppingCart, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ordersApi } from "@/lib/api/orders";
 import { toast } from "sonner";
@@ -68,7 +68,8 @@ export default function AdminOrdersPage() {
     <div className="container px-4 py-8 mx-auto">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
+            <ShoppingCart className="w-8 h-8 text-orange-600" />
             Orders Management
           </h1>
           <p className="text-zinc-600 dark:text-zinc-400 mt-2">
@@ -96,7 +97,8 @@ export default function AdminOrdersPage() {
                   <th className="px-6 py-4 font-medium">Customer</th>
                   <th className="px-6 py-4 font-medium">Date</th>
                   <th className="px-6 py-4 font-medium">Total</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
+                  <th className="px-6 py-4 font-medium">Payment</th>
+                  <th className="px-6 py-4 font-medium">Fulfillment</th>
                   <th className="px-6 py-4 font-medium text-right">Actions</th>
                 </tr>
               </thead>
@@ -114,6 +116,23 @@ export default function AdminOrdersPage() {
                     </td>
                     <td className="px-6 py-4 font-medium text-zinc-900 dark:text-zinc-100">
                       ৳{order.totalAmount}
+                    </td>
+                    <td className="px-6 py-4">
+                      {order.payment ? (
+                        <div>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                            order.payment.status === 'completed' ? 'bg-green-100 text-green-800' :
+                            order.payment.status === 'failed' ? 'bg-red-100 text-red-800' :
+                            order.payment.status === 'refunded' ? 'bg-zinc-100 text-zinc-800' :
+                            'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {order.payment.status}
+                          </span>
+                          <div className="text-xs text-zinc-500 mt-1 uppercase">{order.payment.method}</div>
+                        </div>
+                      ) : (
+                        <span className="text-zinc-400 text-xs italic">No Payment</span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <select
@@ -176,6 +195,37 @@ export default function AdminOrdersPage() {
                       <p className="text-sm text-zinc-600 dark:text-zinc-400">{selectedOrder.addressLine1}</p>
                       <p className="text-sm text-zinc-600 dark:text-zinc-400">{selectedOrder.city}</p>
                     </div>
+                  </div>
+
+                  {/* Payment Info */}
+                  <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-lg border border-zinc-100 dark:border-zinc-800">
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-2 flex items-center gap-2">
+                      <CreditCard className="w-4 h-4" /> Payment Details
+                    </h3>
+                    {selectedOrder.payment ? (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+                        <div>
+                          <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Status</p>
+                          <p className={`font-medium mt-1 ${
+                            selectedOrder.payment.status === 'completed' ? 'text-green-600' :
+                            selectedOrder.payment.status === 'failed' ? 'text-red-600' :
+                            'text-yellow-600'
+                          }`}>
+                            {selectedOrder.payment.status.charAt(0).toUpperCase() + selectedOrder.payment.status.slice(1)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Method</p>
+                          <p className="font-medium mt-1 uppercase text-zinc-900 dark:text-zinc-100">{selectedOrder.payment.method}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold">Transaction ID</p>
+                          <p className="font-mono text-sm mt-1 text-zinc-900 dark:text-zinc-100">{selectedOrder.payment.transactionId || 'N/A'}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-zinc-500 italic mt-2">No payment record found for this order.</p>
+                    )}
                   </div>
 
                   {/* Fulfillment Info */}

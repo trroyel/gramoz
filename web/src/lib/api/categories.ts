@@ -2,12 +2,32 @@ import { HttpClient } from '../http-clients';
 import { ApiResponse, Category } from '@/types';
 
 class CategoriesApi extends HttpClient {
-  async getAll(): Promise<ApiResponse<Category[]>> {
-    return this.request<ApiResponse<Category[]>>('/categories');
+  async getAll(): Promise<{ success: boolean; data?: Category[] }> {
+    return this.request('/categories');
   }
 
-  async getOne(id: string): Promise<ApiResponse<Category>> {
-    return this.request<ApiResponse<Category>>(`/categories/${id}`);
+  async getOne(id: string): Promise<{ success: boolean; data?: Category }> {
+    return this.request(`/categories/${id}`);
+  }
+
+  async create(data: { name: string; slug: string; description?: string }): Promise<{ success: boolean; data?: Category }> {
+    return this.request('/categories', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async update(id: string, data: { name?: string; slug?: string; description?: string }): Promise<{ success: boolean; data?: Category }> {
+    return this.request(`/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async delete(id: string): Promise<{ success: boolean }> {
+    return this.request(`/categories/${id}`, {
+      method: 'DELETE',
+    });
   }
 }
 

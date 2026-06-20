@@ -17,10 +17,14 @@ export const users = pgTable(
     id: uuid().primaryKey().defaultRandom(),
 
     email: varchar({ length: 255 }).notNull().unique(),
-    passwordHash: text('password_hash').notNull(),
+    passwordHash: text('password_hash'), // nullable for OAuth users
 
     fullName: varchar('full_name', { length: 150 }).notNull(),
     phone: varchar({ length: 20 }),
+
+    // OAuth provider tracking ('local' | 'google' | 'facebook')
+    provider: varchar({ length: 50 }).notNull().default('local'),
+    providerId: varchar('provider_id', { length: 255 }),
 
     role: roleEnum().notNull().default('customer'),
 

@@ -17,6 +17,7 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { User } from '@database/schema';
+import { GoogleProfile } from './strategies/google.strategy';
 
 @Injectable()
 export class AuthService {
@@ -94,13 +95,13 @@ export class AuthService {
       throw new UnauthorizedException('Account is suspended or deleted');
     }
 
-    // Generate JWT token
-    const token = await this.generateToken(user);
+    // Generate JWT tokens
+    const { accessToken, refreshToken } = await this.generateTokens(user);
 
     // Store session in Redis
     await this.redis.setSession(
       user.id,
-      token,
+      refreshToken,
       this.config.jwtRefreshExpiresIn,
     );
 
@@ -118,7 +119,8 @@ export class AuthService {
           role: user.role,
           isEmailVerified: user.isEmailVerified,
         },
-        token,
+        accessToken,
+        refreshToken,
       },
     };
   }
@@ -273,12 +275,124 @@ export class AuthService {
     };
   }
 
-  private async generateToken(user: User): Promise<string> {
+  /**
+   * Find or create a user based on their Google profile.
+   * Generates and stores tokens so the callback can set cookies.
+   */
+  async validateOAuthUser(profile: GoogleProfile): Promise<{
+    user: User;
+    accessToken: string;
+    refreshToken: string;
+  }> {
+    let user: User | undefined;
+
+    // 1. Try to find by provider + providerId (most specific match)
+    user = await this.userRepository.findByProviderId(
+      'google',
+      profile.googleId,
+    );
+
+    // 2. Fall back to email match (user may have registered locally before)
+    if (!user) {
+      user = await this.userRepository.findByEmail(profile.email);
+      if (user) {
+        // Link the Google account to the existing local account
+        await this.userRepository.update(user.id, {
+          provider: 'google',
+          providerId: profile.googleId,
+          isEmailVerified: true,
+        });
+        user = (await this.userRepository.findById(user.id)) as User;
+      }
+    }
+
+    // 3. Brand new user — create account
+    if (!user) {
+      user = await this.userRepository.create({
+        email: profile.email,
+        fullName: profile.fullName,
+        passwordHash: null,
+        provider: 'google',
+        providerId: profile.googleId,
+        isEmailVerified: true,
+        isPhoneVerified: false,
+        status: 'active',
+      });
+    }
+
+    if (user.status !== 'active') {
+      throw new UnauthorizedException('Account is suspended or deleted');
+    }
+
+    const { accessToken, refreshToken } = await this.generateTokens(user);
+    await this.redis.setSession(
+      user.id,
+      refreshToken,
+      this.config.jwtRefreshExpiresIn,
+    );
+    await this.userRepository.update(user.id, { lastLoginAt: new Date() });
+
+    return { user, accessToken, refreshToken };
+  }
+
+  private async generateTokens(
+    user: User,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const payload = {
       sub: user.id,
       email: user.email,
     };
 
-    return this.jwtService.sign(payload);
+    const accessToken = this.jwtService.sign(payload);
+    const refreshToken = this.jwtService.sign(payload, {
+      expiresIn: this.config.jwtRefreshExpiresIn as any,
+    });
+
+    return { accessToken, refreshToken };
+  }
+
+  async refreshToken(oldRefreshToken: string) {
+    if (!oldRefreshToken) {
+      throw new UnauthorizedException('No refresh token provided');
+    }
+
+    try {
+      // Verify token signature and expiration
+      const payload = this.jwtService.verify(oldRefreshToken);
+      const userId = payload.sub;
+
+      // Check if session exists in Redis and matches
+      const sessionToken = await this.redis.getSession(userId);
+      if (!sessionToken || sessionToken !== oldRefreshToken) {
+        throw new UnauthorizedException('Invalid or revoked refresh token');
+      }
+
+      // Find user
+      const user = await this.userRepository.findById(userId);
+      if (!user || user.status !== 'active') {
+        throw new UnauthorizedException('User inactive or not found');
+      }
+
+      // Generate new tokens
+      const { accessToken, refreshToken } = await this.generateTokens(user);
+
+      // Update session in Redis
+      await this.redis.setSession(
+        user.id,
+        refreshToken,
+        this.config.jwtRefreshExpiresIn,
+      );
+
+      return {
+        success: true,
+        message: 'Token refreshed successfully',
+        data: {
+          accessToken,
+          refreshToken,
+        },
+      };
+    } catch (e) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
   }
 }

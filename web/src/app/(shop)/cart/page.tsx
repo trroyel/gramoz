@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,21 @@ import { getImageUrl } from "@/lib/utils";
 
 export default function CartPage() {
   const router = useRouter();
-  const { items, subtotal, isLoading, fetchCart, updateQuantity, removeItem, clearCart } = useCartStore();
+  const { 
+    items, 
+    subtotal, 
+    isLoading, 
+    promoCode,
+    discountAmount,
+    promoError,
+    fetchCart, 
+    updateQuantity, 
+    removeItem, 
+    clearCart,
+    applyPromo,
+    removePromo
+  } = useCartStore();
+  const [promoInput, setPromoInput] = useState("");
   const { isAuthenticated } = useAuthStore();
   
   useEffect(() => {
@@ -136,10 +150,59 @@ export default function CartPage() {
                 <span>Calculated at checkout</span>
               </div>
               
-              <div className="border-t dark:border-zinc-800 pt-4 mt-4">
-                <div className="flex justify-between font-bold text-xl text-zinc-900 dark:text-zinc-50">
+              <div className="border-t dark:border-zinc-800 pt-4 mt-4 space-y-4">
+                
+                {/* Promo Code Input */}
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Promo code"
+                      className="flex-1 px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl focus:ring-2 focus:ring-green-500 focus:outline-none uppercase text-sm font-mono"
+                      value={promoInput}
+                      onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                      disabled={isLoading || !!promoCode}
+                    />
+                    {promoCode ? (
+                      <Button 
+                        onClick={() => {
+                          removePromo();
+                          setPromoInput("");
+                        }}
+                        disabled={isLoading}
+                        variant="outline"
+                        className="rounded-xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                      >
+                        Remove
+                      </Button>
+                    ) : (
+                      <Button 
+                        onClick={() => promoInput && applyPromo(promoInput)}
+                        disabled={isLoading || !promoInput}
+                        className="rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white"
+                      >
+                        Apply
+                      </Button>
+                    )}
+                  </div>
+                  {promoError && (
+                    <p className="text-sm text-red-500">{promoError}</p>
+                  )}
+                  {promoCode && (
+                    <p className="text-sm text-green-600 font-medium">Promo applied!</p>
+                  )}
+                </div>
+
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-green-600 font-medium">
+                    <span>Discount</span>
+                    <span>-৳{discountAmount.toFixed(2)}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between font-bold text-xl text-zinc-900 dark:text-zinc-50 pt-2 border-t dark:border-zinc-800">
                   <span>Total</span>
-                  <span>৳{subtotal.toFixed(2)}</span>
+                  <span>৳{Math.max(0, subtotal - discountAmount).toFixed(2)}</span>
                 </div>
               </div>
             </div>

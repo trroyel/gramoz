@@ -20,6 +20,8 @@ export const products = pgTable('products', {
 
   price: decimal({ precision: 10, scale: 2 }).notNull(),
   stock: integer().notNull().default(0),
+  unit: varchar({ length: 20 }).notNull().default('piece'),
+  // piece | kg | g | liter | ml | dozen | meter | pack
 
   images: jsonb().default('[]'),
   categoryId: uuid('category_id').references(() => categories.id),

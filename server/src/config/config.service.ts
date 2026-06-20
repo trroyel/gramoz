@@ -91,4 +91,27 @@ export class ConfigService {
   get bcryptSaltRounds(): number {
     return this.configService.get<number>('AUTH_BCRYPT_SALT_ROUNDS', 10);
   }
+
+  // Google OAuth
+  get googleClientId(): string {
+    return this.configService.get<string>('OAUTH_CLIENT_ID', '');
+  }
+
+  get googleClientSecret(): string {
+    return this.configService.get<string>('OAUTH_CLIENT_SECRET', '');
+  }
+
+  get googleCallbackUrl(): string {
+    return this.configService.get<string>(
+      'OAUTH_CALLBACK_URL',
+      'http://localhost:5000/api/v1/auth/google/callback',
+    );
+  }
+
+  get frontendUrl(): string {
+    return this.configService.get<string>(
+      'FRONTEND_URL',
+      'http://localhost:3000',
+    );
+  }
 }

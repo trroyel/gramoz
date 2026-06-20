@@ -6,11 +6,9 @@ import {
   Delete,
   Body,
   Param,
-  Res,
   UseGuards,
-  HttpStatus,
 } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
+
 import { CartService } from './cart.service';
 import { AddToCartDto } from './dto/add-to-cart.dto';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
@@ -32,21 +30,15 @@ export class CartController {
   constructor(private readonly cartService: CartService) {}
 
   @Get()
-  async getCart(@CurrentUser() user: User, @Res() res: FastifyReply) {
+  async getCart(@CurrentUser() user: User) {
     const cart = await this.cartService.getCart(user.id);
-    return res.send({ success: true, data: cart });
+    return cart;
   }
 
   @Post('items')
-  async addItem(
-    @CurrentUser() user: User,
-    @Body() dto: AddToCartDto,
-    @Res() res: FastifyReply,
-  ) {
+  async addItem(@CurrentUser() user: User, @Body() dto: AddToCartDto) {
     const item = await this.cartService.addItem(user.id, dto);
-    return res
-      .status(HttpStatus.CREATED)
-      .send({ success: true, message: 'Item added to cart', data: item });
+    return { message: 'Item added to cart', data: item };
   }
 
   @Put('items/:itemId')
@@ -54,25 +46,24 @@ export class CartController {
     @CurrentUser() user: User,
     @Param('itemId') itemId: string,
     @Body() dto: UpdateCartItemDto,
-    @Res() res: FastifyReply,
   ) {
-    const item = await this.cartService.updateItem(user.id, itemId, dto.quantity);
-    return res.send({ success: true, message: 'Cart updated', data: item });
+    const item = await this.cartService.updateItem(
+      user.id,
+      itemId,
+      dto.quantity,
+    );
+    return { message: 'Cart updated', data: item };
   }
 
   @Delete('items/:itemId')
-  async removeItem(
-    @CurrentUser() user: User,
-    @Param('itemId') itemId: string,
-    @Res() res: FastifyReply,
-  ) {
+  async removeItem(@CurrentUser() user: User, @Param('itemId') itemId: string) {
     await this.cartService.removeItem(user.id, itemId);
-    return res.send({ success: true, message: 'Item removed from cart' });
+    return { message: 'Item removed from cart' };
   }
 
   @Delete()
-  async clearCart(@CurrentUser() user: User, @Res() res: FastifyReply) {
+  async clearCart(@CurrentUser() user: User) {
     await this.cartService.clearCart(user.id);
-    return res.send({ success: true, message: 'Cart cleared' });
+    return { message: 'Cart cleared' };
   }
 }

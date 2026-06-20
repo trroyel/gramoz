@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Loader2, PackagePlus, Image as ImageIcon, Save } from "lucide-react";
 import { productsApi } from "@/lib/api/products";
 import { CreateProductData, Product } from "@/types";
+import { useCategories } from "@/hooks/queries/use-categories";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -17,8 +18,12 @@ interface ProductFormProps {
   initialData?: Product;
 }
 
-const getImageUrl = (url?: string) => {
-  if (!url) return "";
+const getImageUrl = (urlOrObj?: string | { url?: string } | any) => {
+  if (!urlOrObj) return "";
+  
+  const url = typeof urlOrObj === 'string' ? urlOrObj : urlOrObj?.url;
+  
+  if (!url || typeof url !== 'string') return "";
   if (url.startsWith('http')) return url;
   
   const safeUrl = url.startsWith('/uploads') ? `/public${url}` : url;
@@ -28,6 +33,7 @@ const getImageUrl = (url?: string) => {
 export function CreateProductForm({ initialData }: ProductFormProps) {
   const router = useRouter();
   const isEditMode = !!initialData;
+  const { data: categories = [], isLoading: categoriesLoading } = useCategories();
   
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<Partial<CreateProductData>>({
@@ -35,6 +41,7 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
     description: initialData?.description || "",
     price: initialData?.price ? Number(initialData.price) : 0,
     stock: initialData?.stock || 0,
+    unit: initialData?.unit || "piece",
     categoryId: initialData?.categoryId || "",
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -50,13 +57,14 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
         description: initialData.description || "",
         price: initialData.price ? Number(initialData.price) : 0,
         stock: initialData.stock || 0,
+        unit: initialData.unit || "piece",
         categoryId: initialData.categoryId || "",
       });
       setImagePreview(initialData.images?.[0] ? getImageUrl(initialData.images[0]) : null);
     }
   }, [initialData]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     setFormData((prev) => ({
       ...prev,
@@ -90,6 +98,7 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
         name: formData.name,
         price: formData.price,
         stock: formData.stock,
+        unit: formData.unit,
         categoryId: formData.categoryId,
         description: formData.description,
         images: imageFile ? [imageFile] : undefined,
@@ -161,19 +170,32 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="categoryId">Category ID *</Label>
-                <Input
-                  id="categoryId"
-                  name="categoryId"
-                  placeholder="e.g. uuid-of-category"
-                  value={formData.categoryId}
-                  onChange={handleChange}
-                  disabled={isLoading}
-                  required
-                />
+                <Label htmlFor="categoryId">Category *</Label>
+                {categoriesLoading ? (
+                  <select disabled className="flex h-10 w-full rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground ring-offset-background">
+                    <option>Loading categories...</option>
+                  </select>
+                ) : (
+                  <select
+                    id="categoryId"
+                    name="categoryId"
+                    value={formData.categoryId || ""}
+                    onChange={handleChange}
+                    disabled={isLoading}
+                    required
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="" disabled>Select a category</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="price">Price (৳) *</Label>
                   <Input
@@ -201,6 +223,27 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
                     disabled={isLoading}
                     required
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="unit">Unit *</Label>
+                  <select
+                    id="unit"
+                    name="unit"
+                    value={formData.unit || "piece"}
+                    onChange={handleChange}
+                    disabled={isLoading}
+                    required
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="piece">Piece</option>
+                    <option value="kg">KG</option>
+                    <option value="g">Gram</option>
+                    <option value="liter">Liter</option>
+                    <option value="ml">ML</option>
+                    <option value="dozen">Dozen</option>
+                    <option value="meter">Meter</option>
+                    <option value="pack">Pack</option>
+                  </select>
                 </div>
               </div>
 

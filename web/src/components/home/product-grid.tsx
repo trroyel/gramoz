@@ -105,10 +105,10 @@ export function ProductGrid({
                     {product.name}
                   </h3>
                   <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-2">
-                    {product.categoryName} • Stock: {product.stock}
+                    {product.categoryName} • Stock: {product.stock} {product.unit || 'piece'}{product.stock !== 1 && (!product.unit || product.unit === 'piece') ? 's' : ''}
                   </p>
                   <div className="text-green-600 dark:text-green-500 font-bold text-xl">
-                    ৳{product.price}
+                    ৳{product.price} <span className="text-sm font-normal text-zinc-500">/ {product.unit || 'piece'}</span>
                   </div>
                 </CardContent>
                 <CartButton product={product} />

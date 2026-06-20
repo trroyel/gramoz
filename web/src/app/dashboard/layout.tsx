@@ -30,7 +30,7 @@ export default function CustomerDashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, clearAuth } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -40,8 +40,8 @@ export default function CustomerDashboardLayout({
     }
   }, [user, router]);
 
-  const handleLogout = () => {
-    clearAuth();
+  const handleLogout = async () => {
+    await logout();
     router.push("/login");
   };
 
@@ -109,7 +109,7 @@ export default function CustomerDashboardLayout({
           </nav>
 
           <div className="p-4 border-t dark:border-zinc-800">
-            <div className="flex items-center gap-3 p-3 rounded-xl mb-2">
+            <div className="flex items-center gap-3 p-3 rounded-xl">
               <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
                 <UserIcon className="w-5 h-5 text-green-600 dark:text-green-500" />
               </div>
@@ -122,14 +122,6 @@ export default function CustomerDashboardLayout({
                 </p>
               </div>
             </div>
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl"
-              onClick={handleLogout}
-            >
-              <LogOut className="w-5 h-5 mr-3" />
-              Sign Out
-            </Button>
           </div>
         </div>
       </aside>
@@ -142,7 +134,7 @@ export default function CustomerDashboardLayout({
             onClick={() => setIsMobileMenuOpen(false)}
           />
         )}
-        <div className="p-4 md:p-8 w-full max-w-7xl mx-auto flex-1 overflow-y-auto">
+        <div className="container p-4 md:p-8 mx-auto w-full flex-1 overflow-y-auto">
           {children}
         </div>
       </main>

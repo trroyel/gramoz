@@ -20,7 +20,7 @@ export function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "");
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { isAuthenticated, user, clearAuth } = useAuthStore();
+  const { isAuthenticated, user, logout } = useAuthStore();
   const cartItems = useCartStore((state) => state.items);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   
@@ -39,8 +39,8 @@ export function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleLogout = () => {
-    clearAuth();
+  const handleLogout = async () => {
+    await logout();
     window.location.href = "/";
   };
 

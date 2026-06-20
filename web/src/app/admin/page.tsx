@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Package, ShoppingCart, TrendingUp, Loader2 } from "lucide-react";
+import { DollarSign, Package, ShoppingCart, TrendingUp, Loader2, Tag } from "lucide-react";
 import { ordersApi } from "@/lib/api/orders";
 import { productsApi } from "@/lib/api/products";
+import { promosApi, Promo } from "@/lib/api/promos";
+import Link from "next/link";
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
@@ -16,14 +18,16 @@ export default function DashboardPage() {
     totalOrders: 0,
     totalProducts: 0,
     recentOrders: [] as any[],
+    activePromos: [] as Promo[],
   });
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        const [ordersRes, productsRes] = await Promise.all([
+        const [ordersRes, productsRes, promosData] = await Promise.all([
           ordersApi.getAllAsAdmin(),
           productsApi.getAll(),
+          promosApi.getAllPromos().catch(() => []),
         ]);
 
         let revenue = 0;
@@ -49,11 +53,16 @@ export default function DashboardPage() {
           productsCount = productsRes.data.length;
         }
 
+        let activePromosList = Array.isArray(promosData) 
+          ? promosData.filter(p => p.isActive).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 3) 
+          : [];
+
         setStats({
           totalRevenue: revenue,
           totalOrders: ordersCount,
           totalProducts: productsCount,
           recentOrders: recent,
+          activePromos: activePromosList,
         });
 
       } catch (error) {
@@ -186,18 +195,44 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="col-span-1 border-0 shadow-sm flex flex-col justify-center items-center text-center p-8 bg-gradient-to-br from-green-500 to-green-700 text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-10">
-            <TrendingUp className="w-48 h-48" />
+        <Card className="col-span-1 border-0 shadow-sm flex flex-col p-6 bg-gradient-to-br from-green-500 to-green-700 text-white relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-6 opacity-10">
+            <Tag className="w-32 h-32" />
           </div>
-          <div className="relative z-10 w-full space-y-4">
-            <h3 className="text-2xl font-bold">Pro Features Unlocked</h3>
-            <p className="text-green-100 text-sm">
-              Thanks to your consistent selling, you've been upgraded to a featured entrepreneur.
-            </p>
-            <button className="bg-white text-green-700 px-6 py-2 rounded-full font-semibold text-sm w-full shadow-lg hover:shadow-xl transition-all">
-              Manage Promos
-            </button>
+          <div className="relative z-10 w-full flex-1 flex flex-col">
+            <div className="flex items-center gap-2 mb-6">
+              <Tag className="w-5 h-5" />
+              <h3 className="text-xl font-bold">Active Promos</h3>
+            </div>
+            
+            <div className="flex-1 space-y-4">
+              {stats.activePromos.length === 0 ? (
+                <div className="text-green-100 text-sm text-center py-8">
+                  No active promos at the moment.
+                </div>
+              ) : (
+                stats.activePromos.map(promo => (
+                  <div key={promo.id} className="bg-white/10 rounded-lg p-3 backdrop-blur-sm border border-white/20 flex justify-between items-center">
+                    <div>
+                      <div className="font-mono font-bold tracking-wider">{promo.code}</div>
+                      <div className="text-xs text-green-100 mt-1">
+                        {promo.discountType === 'percentage' ? `${promo.discountValue}% OFF` : `৳${promo.discountValue} OFF`}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold">{promo.currentUses}</div>
+                      <div className="text-[10px] text-green-100 uppercase tracking-wide">Uses</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <Link href="/admin/promos" className="mt-6">
+              <button className="bg-white text-green-700 px-6 py-2.5 rounded-lg font-semibold text-sm w-full shadow-lg hover:bg-green-50 transition-colors">
+                Manage Promos
+              </button>
+            </Link>
           </div>
         </Card>
       </div>

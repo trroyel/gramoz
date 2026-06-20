@@ -9,80 +9,63 @@ import {
   Res,
   Query,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import * as fs from 'fs';
-import * as util from 'util';
-import { pipeline } from 'stream';
-import { extname } from 'path';
 import { ProductsService } from './products.service';
+import { StorageService } from '../storage/storage.service';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@modules/auth/guards/roles.guard';
 import { Roles } from '@modules/auth/decorators/roles.decorator';
-
-const pump = util.promisify(pipeline);
-
-// Ensure upload directory exists
-const uploadDir = './public/uploads';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+import { Role } from '@database/schema';
+import { FindProductsQueryDto } from './dto/find-products-query.dto';
+import { FastifyFileUploadInterceptor } from '../../common/interceptors/fastify-file-upload.interceptor';
 
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly storageService: StorageService,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('super_admin', 'admin', 'seller')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @UseInterceptors(FastifyFileUploadInterceptor)
   async create(@Req() req: FastifyRequest, @Res() res: FastifyReply) {
-    if (!req.isMultipart()) {
-      return res
-        .status(400)
-        .send({ success: false, message: 'Request is not multipart' });
-    }
+    const parsedBody = (req as any).parsedBody || {};
+    const uploadedFile = (req as any).uploadedFile;
 
-    let name: string = '';
-    let price: number = 0;
-    let stock: number = 0;
-    let description: string | undefined = undefined;
-    let categoryId: string | undefined = undefined;
-    let imageUrl: string | undefined = undefined;
+    const name = String(parsedBody.name || '');
+    const price = Number(parsedBody.price);
+    const stock = Number(parsedBody.stock);
+    const description = parsedBody.description ? String(parsedBody.description) : undefined;
+    const categoryId = parsedBody.categoryId ? String(parsedBody.categoryId) : undefined;
+    const unit = parsedBody.unit ? String(parsedBody.unit) : undefined;
 
-    const parts = req.parts();
+    let imageUrl: string | undefined;
 
-    for await (const part of parts) {
-      if (part.type === 'file' && part.filename) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        const ext = extname(part.filename);
-        const filename = `${part.fieldname}-${uniqueSuffix}${ext}`;
-        const dest = `${uploadDir}/${filename}`;
-
-        await pump(part.file, fs.createWriteStream(dest));
-        imageUrl = `/public/uploads/${filename}`;
-      } else if (part.type === 'field') {
-        if (part.fieldname === 'name') name = String(part.value);
-        if (part.fieldname === 'price') price = Number(part.value);
-        if (part.fieldname === 'stock') stock = Number(part.value);
-        if (part.fieldname === 'description') description = String(part.value);
-        if (part.fieldname === 'categoryId') categoryId = String(part.value);
-      }
+    if (uploadedFile) {
+      imageUrl = await this.storageService.upload(
+        uploadedFile.file,
+        uploadedFile.filename,
+        uploadedFile.mimetype,
+      );
     }
 
     if (!name || isNaN(price) || isNaN(stock)) {
       return res.status(400).send({
         success: false,
-        message: 'Missing required fields or invalid types',
+        message: 'Missing required fields: name, price, stock',
       });
     }
 
-    const createProductDto = { name, price, stock, description, categoryId };
     const product = await this.productsService.create(
-      createProductDto,
+      { name, price, stock, description, categoryId, unit },
       imageUrl,
     );
 
-    return res.send({
+    return res.status(201).send({
       success: true,
       message: 'Product created successfully',
       data: product,
@@ -90,7 +73,7 @@ export class ProductsController {
   }
 
   @Get()
-  async findAll(@Query() query: any, @Res() res: FastifyReply) {
+  async findAll(@Query() query: FindProductsQueryDto, @Res() res: FastifyReply) {
     const products = await this.productsService.findAll(query);
     return res.send({
       success: true,
@@ -116,18 +99,13 @@ export class ProductsController {
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('super_admin', 'admin', 'seller')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @UseInterceptors(FastifyFileUploadInterceptor)
   async update(
     @Param('id') id: string,
     @Req() req: FastifyRequest,
     @Res() res: FastifyReply,
   ) {
-    if (!req.isMultipart()) {
-      return res
-        .status(400)
-        .send({ success: false, message: 'Request is not multipart' });
-    }
-
     const product = await this.productsService.findOne(id);
     if (!product) {
       return res
@@ -135,37 +113,29 @@ export class ProductsController {
         .send({ success: false, message: 'Product not found' });
     }
 
-    let name: string | undefined;
-    let price: number | undefined;
-    let stock: number | undefined;
-    let description: string | undefined;
-    let categoryId: string | undefined;
+    const parsedBody = (req as any).parsedBody || {};
+    const uploadedFile = (req as any).uploadedFile;
+
+    const name = parsedBody.name ? String(parsedBody.name) : undefined;
+    const price = parsedBody.price !== undefined ? Number(parsedBody.price) : undefined;
+    const stock = parsedBody.stock !== undefined ? Number(parsedBody.stock) : undefined;
+    const description = parsedBody.description !== undefined ? String(parsedBody.description) : undefined;
+    const categoryId = parsedBody.categoryId !== undefined ? String(parsedBody.categoryId) : undefined;
+    const unit = parsedBody.unit !== undefined ? String(parsedBody.unit) : undefined;
+
     let imageUrl: string | undefined;
 
-    const parts = req.parts();
-
-    for await (const part of parts) {
-      if (part.type === 'file' && part.filename) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        const ext = extname(part.filename);
-        const filename = `${part.fieldname}-${uniqueSuffix}${ext}`;
-        const dest = `${uploadDir}/${filename}`;
-
-        await pump(part.file, fs.createWriteStream(dest));
-        imageUrl = `/public/uploads/${filename}`;
-      } else if (part.type === 'field') {
-        if (part.fieldname === 'name') name = String(part.value);
-        if (part.fieldname === 'price') price = Number(part.value);
-        if (part.fieldname === 'stock') stock = Number(part.value);
-        if (part.fieldname === 'description') description = String(part.value);
-        if (part.fieldname === 'categoryId') categoryId = String(part.value);
-      }
+    if (uploadedFile) {
+      imageUrl = await this.storageService.upload(
+        uploadedFile.file,
+        uploadedFile.filename,
+        uploadedFile.mimetype,
+      );
     }
 
-    const updateDto = { name, price, stock, description, categoryId };
     const updatedProduct = await this.productsService.update(
       id,
-      updateDto,
+      { name, price, stock, description, categoryId, unit },
       imageUrl,
     );
 
@@ -178,7 +148,7 @@ export class ProductsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('super_admin', 'admin')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   async remove(@Param('id') id: string, @Res() res: FastifyReply) {
     const product = await this.productsService.findOne(id);
     if (!product) {

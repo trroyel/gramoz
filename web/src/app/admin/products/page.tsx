@@ -3,14 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Loader2, Edit, Trash2 } from "lucide-react";
+import { Plus, Loader2, Edit, Trash2, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { productsApi } from "@/lib/api/products";
 import { Product } from "@/types";
 import { toast } from "sonner";
 
-const getImageUrl = (url?: string) => {
-  if (!url) return "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=100&q=80";
+const getImageUrl = (urlOrObj?: string | { url?: string } | any) => {
+  if (!urlOrObj) return "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=100&q=80";
+  
+  const url = typeof urlOrObj === 'string' ? urlOrObj : urlOrObj?.url;
+  
+  if (!url || typeof url !== 'string') return "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=100&q=80";
   if (url.startsWith('http')) return url;
   
   const safeUrl = url.startsWith('/uploads') ? `/public${url}` : url;
@@ -59,7 +63,8 @@ export default function ProductsPage() {
     <div className="container px-4 py-8 mx-auto">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
+            <Package className="w-8 h-8 text-orange-500" />
             Products
           </h1>
           <p className="text-zinc-600 dark:text-zinc-400 mt-2">

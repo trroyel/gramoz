@@ -18,6 +18,10 @@ export class RedisService implements OnModuleDestroy {
     this.client.disconnect();
   }
 
+  async ping(): Promise<void> {
+    await this.client.ping();
+  }
+
   // Session management
   async setSession(
     userId: string,
@@ -70,6 +74,19 @@ export class RedisService implements OnModuleDestroy {
 
   async deleteResetCode(email: string): Promise<void> {
     await this.client.del(`auth:reset:${email}`);
+  }
+
+  // Generic cache methods
+  async get(key: string): Promise<string | null> {
+    return this.client.get(key);
+  }
+
+  async set(key: string, value: string, ttlSeconds: number): Promise<void> {
+    await this.client.setex(key, ttlSeconds, value);
+  }
+
+  async del(key: string): Promise<void> {
+    await this.client.del(key);
   }
 
   // Generate 8-digit code

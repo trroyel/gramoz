@@ -1,150 +1,216 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { X } from "lucide-react";
-import { useDebounce } from "@/hooks/use-debounce";
-import { Button } from "@/components/ui/button";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { categoriesApi } from "@/lib/api/categories";
 import { Category } from "@/types";
+import { SlidersHorizontal, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+const SORT_OPTIONS = [
+  { value: "newest", label: "Newest" },
+  { value: "price_asc", label: "Price: Low to High" },
+  { value: "price_desc", label: "Price: High to Low" },
+];
+
+interface SectionProps {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}
+
+function FilterSection({ title, children, defaultOpen = true }: SectionProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border-b border-zinc-200 dark:border-zinc-800 pb-4 mb-4 last:border-0 last:mb-0 last:pb-0">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+      >
+        {title}
+        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </button>
+      {open && children}
+    </div>
+  );
+}
 
 export function ProductFilters() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-
-  // Initialize from URL once on mount
-  const [minPrice, setMinPrice] = useState(() => searchParams.get("minPrice") ?? "");
-  const [maxPrice, setMaxPrice] = useState(() => searchParams.get("maxPrice") ?? "");
-  const [category, setCategory] = useState(() => searchParams.get("category") ?? "All");
-  const [sort, setSort] = useState(() => searchParams.get("sort") ?? "newest");
-  const [inStockOnly, setInStockOnly] = useState(() => searchParams.get("inStock") === "true");
-  const debouncedMinPrice = useDebounce(minPrice, 500);
-  const debouncedMaxPrice = useDebounce(maxPrice, 500);
+  const [isPending, startTransition] = useTransition();
 
   const [categories, setCategories] = useState<Category[]>([]);
 
+  // Local state for price inputs (only applied on blur / Enter)
+  const [minPrice, setMinPrice] = useState(searchParams.get("minPrice") ?? "");
+  const [maxPrice, setMaxPrice] = useState(searchParams.get("maxPrice") ?? "");
+
+  const activeCategory = searchParams.get("category") ?? "";
+  const activeSort = searchParams.get("sort") ?? "newest";
+  const activeMin = searchParams.get("minPrice") ?? "";
+  const activeMax = searchParams.get("maxPrice") ?? "";
+
+  const hasFilters = activeCategory || activeSort !== "newest" || activeMin || activeMax;
+
   useEffect(() => {
     categoriesApi.getAll().then((res) => {
-      if (res.success) {
-        setCategories(res.data);
-      }
+      if (res.success && res.data) setCategories(res.data);
     });
   }, []);
 
-  // Push new URL when filter values change
+  // Sync local price state if URL changes externally (e.g. back button)
   useEffect(() => {
-    const params = new URLSearchParams(searchParams.toString());
-    
-    // Manage price bounds
-    if (debouncedMinPrice) params.set("minPrice", debouncedMinPrice);
-    else params.delete("minPrice");
-    
-    if (debouncedMaxPrice) params.set("maxPrice", debouncedMaxPrice);
-    else params.delete("maxPrice");
-    
-    // Manage category
-    if (category && category !== "All") params.set("category", category);
-    else params.delete("category");
-    
-    // Manage sort
-    if (sort && sort !== "newest") params.set("sort", sort);
-    else params.delete("sort");
-    
-    // Manage stock
-    if (inStockOnly) params.set("inStock", "true");
-    else params.delete("inStock");
-    
-    router.push(`/products?${params.toString()}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedMinPrice, debouncedMaxPrice, category, sort, inStockOnly, router]);
+    setMinPrice(searchParams.get("minPrice") ?? "");
+    setMaxPrice(searchParams.get("maxPrice") ?? "");
+  }, [searchParams]);
 
-  const clearFilters = () => {
+  function updateParam(key: string, value: string | null) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value === null || value === "") {
+      params.delete(key);
+    } else {
+      params.set(key, value);
+    }
+    // Reset to page 1 when any filter changes
+    params.delete("page");
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
+  }
+
+  function applyPriceRange() {
+    const params = new URLSearchParams(searchParams.toString());
+    if (minPrice) params.set("minPrice", minPrice); else params.delete("minPrice");
+    if (maxPrice) params.set("maxPrice", maxPrice); else params.delete("maxPrice");
+    params.delete("page");
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
+  }
+
+  function clearAll() {
     setMinPrice("");
     setMaxPrice("");
-    setCategory("All");
-    setSort("newest");
-    setInStockOnly(false);
-  };
-
-  const hasActiveFilters = minPrice || maxPrice || category !== "All" || sort !== "newest" || inStockOnly;
+    startTransition(() => {
+      router.push(pathname);
+    });
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between min-h-8">
-        <h3 className="font-medium">Filter By</h3>
-        {hasActiveFilters && (
-          <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs px-2 text-muted-foreground hover:text-red-500">
-            <X className="w-3 h-3 mr-1" /> Clear All
-          </Button>
+    <div className={cn("transition-opacity", isPending && "opacity-60 pointer-events-none")}>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="w-4 h-4 text-green-600" />
+          <span className="font-bold text-sm text-zinc-900 dark:text-zinc-50">Filters</span>
+        </div>
+        {hasFilters && (
+          <button
+            onClick={clearAll}
+            className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600 transition-colors"
+          >
+            <X className="w-3 h-3" /> Clear all
+          </button>
         )}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="category">Category</Label>
-        <select
-          id="category"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className="flex h-10 w-full items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent dark:border-zinc-800 dark:bg-zinc-950"
-        >
-          <option value="All">All Categories</option>
+      {/* Categories */}
+      <FilterSection title="Category">
+        <ul className="space-y-1">
+          <li>
+            <button
+              onClick={() => updateParam("category", null)}
+              className={cn(
+                "w-full text-left text-sm px-2 py-1.5 rounded-lg transition-colors",
+                !activeCategory
+                  ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 font-medium"
+                  : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              )}
+            >
+              All Categories
+            </button>
+          </li>
           {categories.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-            </option>
+            <li key={cat.id}>
+              <button
+                onClick={() => updateParam("category", cat.id)}
+                className={cn(
+                  "w-full text-left text-sm px-2 py-1.5 rounded-lg transition-colors",
+                  activeCategory === cat.id
+                    ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 font-medium"
+                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                )}
+              >
+                {cat.name}
+              </button>
+            </li>
           ))}
-        </select>
-      </div>
+        </ul>
+      </FilterSection>
 
-      <div className="space-y-2">
-        <Label htmlFor="sort">Sort By</Label>
-        <select
-          id="sort"
-          value={sort}
-          onChange={(e) => setSort(e.target.value)}
-          className="flex h-10 w-full items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent dark:border-zinc-800 dark:bg-zinc-950"
-        >
-          <option value="newest">Newest Arrivals</option>
-          <option value="price_asc">Price: Low to High</option>
-          <option value="price_desc">Price: High to Low</option>
-        </select>
-      </div>
+      {/* Sort */}
+      <FilterSection title="Sort By">
+        <ul className="space-y-1">
+          {SORT_OPTIONS.map((opt) => (
+            <li key={opt.value}>
+              <button
+                onClick={() => updateParam("sort", opt.value === "newest" ? null : opt.value)}
+                className={cn(
+                  "w-full text-left text-sm px-2 py-1.5 rounded-lg transition-colors",
+                  activeSort === opt.value || (opt.value === "newest" && !searchParams.get("sort"))
+                    ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 font-medium"
+                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                )}
+              >
+                {opt.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </FilterSection>
 
-      <div className="space-y-2">
-        <Label>Price Range (৳)</Label>
-        <div className="flex items-center gap-2">
-          <Input
-            id="min-price"
-            type="number"
-            placeholder="Min"
-            value={minPrice}
-            onChange={(e) => setMinPrice(e.target.value)}
-          />
-          <span className="text-zinc-500">–</span>
-          <Input
-            id="max-price"
-            type="number"
-            placeholder="Max"
-            value={maxPrice}
-            onChange={(e) => setMaxPrice(e.target.value)}
-          />
+      {/* Price Range */}
+      <FilterSection title="Price Range (৳)">
+        <div className="space-y-3">
+          <div className="flex gap-2 items-center">
+            <div className="flex-1">
+              <label className="text-xs text-zinc-500 mb-1 block">Min</label>
+              <input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && applyPriceRange()}
+                className="w-full text-sm border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+            </div>
+            <span className="text-zinc-400 pt-4">—</span>
+            <div className="flex-1">
+              <label className="text-xs text-zinc-500 mb-1 block">Max</label>
+              <input
+                type="number"
+                min="0"
+                placeholder="∞"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && applyPriceRange()}
+                className="w-full text-sm border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+          <Button
+            size="sm"
+            className="w-full bg-green-600 hover:bg-green-700 text-white"
+            onClick={applyPriceRange}
+          >
+            Apply
+          </Button>
         </div>
-      </div>
-
-      <div className="flex items-center space-x-2 pt-2 border-t dark:border-zinc-800">
-        <input
-          type="checkbox"
-          id="inStock"
-          checked={inStockOnly}
-          onChange={(e) => setInStockOnly(e.target.checked)}
-          className="h-4 w-4 rounded border-zinc-300 text-green-600 focus:ring-green-600"
-        />
-        <Label htmlFor="inStock" className="cursor-pointer font-normal">
-          In Stock Only
-        </Label>
-      </div>
+      </FilterSection>
     </div>
   );
 }

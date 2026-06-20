@@ -23,9 +23,17 @@ export interface AuthResponse {
 
 export interface ApiResponse<T = any> {
   success: boolean;
-  message: string;
+  message?: string;
   data: T;
+  meta?: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
 }
+
+export interface PaginatedResponse<T = any> extends ApiResponse<T[]> {}
 
 export interface Category {
   id: string;
@@ -42,6 +50,7 @@ export interface Product {
   description?: string;
   price: string | number;
   stock: number;
+  unit: string;
   images: string[];
   categoryId: string;
   categoryName?: string;
@@ -69,13 +78,14 @@ export interface Cart {
 export interface Address {
   id: string;
   userId: string;
+  title: string;
   label?: string;
   addressLine1: string;
   addressLine2?: string;
   city: string;
   state?: string;
   zipCode?: string;
-  country: string;
+  country?: string;
   isDefault: boolean;
 }
 
@@ -93,7 +103,11 @@ export interface Order {
   shippingAddressId: string;
   totalAmount: string;
   status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
-  paymentStatus: 'pending' | 'completed' | 'failed' | 'refunded';
+  payment?: {
+    status: 'pending' | 'completed' | 'failed' | 'refunded';
+    method: string;
+    transactionId: string | null;
+  } | null;
   createdAt: string;
   items?: OrderItem[];
 }
@@ -103,6 +117,7 @@ export interface CreateProductData {
   description?: string;
   price: number;
   stock: number;
+  unit?: string;
   categoryId?: string;
   images?: File[];
 }

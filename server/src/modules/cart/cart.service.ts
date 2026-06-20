@@ -1,14 +1,28 @@
 import {
   Injectable,
   Inject,
-  NotFoundException,
-  BadRequestException,
 } from '@nestjs/common';
+import { EntityNotFoundError, InvalidOperationError, InsufficientStockError } from '../../common/errors/domain.errors';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { eq, and } from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
 import { AddToCartDto } from './dto/add-to-cart.dto';
+
+export type CartSummary = {
+  items: {
+    id: string;
+    quantity: number;
+    productId: string;
+    productName: string;
+    productPrice: string;
+    productImages: any;
+    productStock: number;
+    productStatus: string | null;
+  }[];
+  subtotal: string;
+  itemCount: number;
+};
 
 @Injectable()
 export class CartService {
@@ -16,7 +30,7 @@ export class CartService {
     @Inject(DATABASE) private readonly db: NodePgDatabase<typeof schema>,
   ) {}
 
-  async getCart(userId: string) {
+  async getCart(userId: string): Promise<CartSummary> {
     const items = await this.db
       .select({
         id: schema.cartItems.id,
@@ -29,7 +43,10 @@ export class CartService {
         productStatus: schema.products.status,
       })
       .from(schema.cartItems)
-      .leftJoin(schema.products, eq(schema.cartItems.productId, schema.products.id))
+      .leftJoin(
+        schema.products,
+        eq(schema.cartItems.productId, schema.products.id),
+      )
       .where(eq(schema.cartItems.userId, userId));
 
     // Calculate totals
@@ -40,18 +57,18 @@ export class CartService {
     return { items, subtotal: subtotal.toFixed(2), itemCount: items.length };
   }
 
-  async addItem(userId: string, dto: AddToCartDto) {
+  async addItem(userId: string, dto: AddToCartDto): Promise<schema.CartItem> {
     // Verify product exists and is active
     const [product] = await this.db
       .select()
       .from(schema.products)
       .where(eq(schema.products.id, dto.productId));
 
-    if (!product) throw new NotFoundException('Product not found');
+    if (!product) throw new EntityNotFoundError('Product not found');
     if (product.status !== 'active')
-      throw new BadRequestException('Product is not available');
+      throw new InvalidOperationError('Product is not available');
     if (product.stock < dto.quantity)
-      throw new BadRequestException(
+      throw new InsufficientStockError(
         `Only ${product.stock} units available in stock`,
       );
 
@@ -69,7 +86,7 @@ export class CartService {
     if (existing) {
       const newQty = existing.quantity + dto.quantity;
       if (newQty > product.stock)
-        throw new BadRequestException(
+        throw new InsufficientStockError(
           `Cannot add more. Only ${product.stock} units available`,
         );
 
@@ -89,7 +106,7 @@ export class CartService {
     return item;
   }
 
-  async updateItem(userId: string, cartItemId: string, quantity: number) {
+  async updateItem(userId: string, cartItemId: string, quantity: number): Promise<schema.CartItem> {
     const [item] = await this.db
       .select()
       .from(schema.cartItems)
@@ -100,7 +117,7 @@ export class CartService {
         ),
       );
 
-    if (!item) throw new NotFoundException('Cart item not found');
+    if (!item) throw new EntityNotFoundError('Cart item not found');
 
     // Check stock
     const [product] = await this.db
@@ -109,7 +126,7 @@ export class CartService {
       .where(eq(schema.products.id, item.productId));
 
     if (product.stock < quantity)
-      throw new BadRequestException(
+      throw new InsufficientStockError(
         `Only ${product.stock} units available in stock`,
       );
 
@@ -122,7 +139,7 @@ export class CartService {
     return updated;
   }
 
-  async removeItem(userId: string, cartItemId: string) {
+  async removeItem(userId: string, cartItemId: string): Promise<void> {
     const [item] = await this.db
       .select()
       .from(schema.cartItems)
@@ -133,14 +150,14 @@ export class CartService {
         ),
       );
 
-    if (!item) throw new NotFoundException('Cart item not found');
+    if (!item) throw new EntityNotFoundError('Cart item not found');
 
     await this.db
       .delete(schema.cartItems)
       .where(eq(schema.cartItems.id, cartItemId));
   }
 
-  async clearCart(userId: string) {
+  async clearCart(userId: string): Promise<void> {
     await this.db
       .delete(schema.cartItems)
       .where(eq(schema.cartItems.userId, userId));
