@@ -9,6 +9,7 @@ import {
   Req,
   Logger,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
@@ -70,7 +71,9 @@ export class AuthController {
     return result;
   }
 
-  @SkipThrottle()
+  // Tight but reasonable: 10 refreshes/min covers multiple devices and background
+  // tab renewals. Prevents a stolen refresh token from being used indefinitely.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post('refresh')
   async refresh(
     @Req() req: FastifyRequest,
@@ -148,30 +151,51 @@ export class AuthController {
   /**
    * Step 1 — Redirect the browser to Google's consent screen.
    * We build the URL manually so we never touch Express-only Passport middleware.
+   *
+   * CSRF protection: a cryptographically random `state` nonce is generated here,
+   * stored in a short-lived signed httpOnly cookie, and included in the redirect
+   * URL. The callback verifies the nonce before exchanging the auth code.
    */
   @SkipThrottle()
   @Get('google')
   async googleLogin(@Res() res: FastifyReply) {
+    // Generate a 16-byte (128-bit) random nonce — sufficient for CSRF protection
+    const state = randomBytes(16).toString('hex');
+
+    // Store in a signed httpOnly cookie so JS cannot tamper with it.
+    // 5-minute TTL matches the maximum time a user should spend on Google's consent screen.
+    res.setCookie('oauth_state', state, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 300, // 5 minutes
+      signed: true,
+    });
+
     const params = new URLSearchParams({
       client_id: this.config.googleClientId,
       redirect_uri: this.config.googleCallbackUrl,
       response_type: 'code',
       scope: 'email profile',
       access_type: 'online',
+      state,
     });
     const googleUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
     return res.code(302).header('Location', googleUrl).send();
   }
 
   /**
-   * Step 2 — Google redirects back here with ?code=...
-   * Exchange the code for an access token, fetch the profile, set cookies.
+   * Step 2 — Google redirects back here with ?code=... and ?state=...
+   * Verify the CSRF state nonce, then exchange the code for tokens.
    */
   @SkipThrottle()
   @Get('google/callback')
   async googleCallback(
     @Query('code') code: string,
     @Query('error') error: string,
+    @Query('state') state: string,
+    @Req() req: FastifyRequest,
     @Res() res: FastifyReply,
   ) {
     const redirect = (url: string) =>
@@ -180,6 +204,24 @@ export class AuthController {
     if (error || !code) {
       return redirect(`${this.config.frontendUrl}/login?error=oauth_denied`);
     }
+
+    // ── CSRF State Verification ──────────────────────────────────────────────
+    // Retrieve the signed nonce we stored in googleLogin. If the cookie is
+    // absent, expired, or tampered with, unsignCookie returns { valid: false }.
+    const unsignedState = req.unsignCookie(req.cookies['oauth_state'] ?? '');
+    const storedState = unsignedState.valid ? unsignedState.value : null;
+
+    // Always clear the one-time cookie regardless of outcome
+    res.clearCookie('oauth_state', { path: '/' });
+
+    if (!storedState || !state || storedState !== state) {
+      this.logger.warn(
+        '[Google OAuth] State mismatch — possible CSRF attempt. ' +
+        `Expected: ${storedState ?? 'missing'}, Got: ${state ?? 'missing'}`,
+      );
+      return redirect(`${this.config.frontendUrl}/login?error=oauth_state_mismatch`);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     try {
       // Exchange authorisation code for Google access token

@@ -7,7 +7,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { roleEnum } from './enums';
+import { roleEnum, userStatusEnum } from './enums';
 import { relations } from 'drizzle-orm';
 import { addresses } from './addresses';
 
@@ -31,8 +31,7 @@ export const users = pgTable(
     isEmailVerified: boolean('is_email_verified').notNull().default(false),
     isPhoneVerified: boolean('is_phone_verified').notNull().default(false),
 
-    status: varchar({ length: 20 }).notNull().default('active'),
-    // active | suspended | deleted
+    status: userStatusEnum().notNull().default('active'),
 
     lastLoginAt: timestamp('last_login_at'),
 

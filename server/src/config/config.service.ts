@@ -39,6 +39,14 @@ export class ConfigService {
     return this.configService.get<string>('DATABASE_URL', '');
   }
 
+  get dbPoolMax(): number {
+    return this.configService.get<number>('DB_POOL_MAX', 20);
+  }
+
+  get dbPoolMin(): number {
+    return this.configService.get<number>('DB_POOL_MIN', 2);
+  }
+
   // Redis
   get redisHost(): string {
     return this.configService.get<string>('REDIS_HOST', 'localhost');
@@ -59,6 +67,10 @@ export class ConfigService {
 
   get emailFrom(): string {
     return this.configService.get<string>('EMAIL_FROM', 'noreply@gramoz.com');
+  }
+
+  get adminEmail(): string {
+    return this.configService.get<string>('ADMIN_EMAIL', '');
   }
 
   // Auth

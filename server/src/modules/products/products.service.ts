@@ -1,4 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
+import { EntityNotFoundError } from '../../common/errors/domain.errors';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
   eq,
@@ -11,6 +12,7 @@ import {
   isNull,
   SQL,
   or,
+  sql,
 } from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
@@ -81,7 +83,7 @@ export class ProductsService {
     sort?: string;
     page?: string;
     limit?: string;
-  }): Promise<ProductWithCategory[]> {
+  }): Promise<{ data: ProductWithCategory[]; meta: { total: number; page: number; limit: number; totalPages: number } }> {
     // Always exclude soft-deleted and non-active products from the shop listing
     const conditions: SQL[] = [
       isNull(schema.products.deletedAt),
@@ -130,31 +132,55 @@ export class ProductsService {
           ? desc(schema.products.price)
           : desc(schema.products.createdAt);
 
-    return this.db
-      .select({
-        id: schema.products.id,
-        name: schema.products.name,
-        slug: schema.products.slug,
-        description: schema.products.description,
-        price: schema.products.price,
-        stock: schema.products.stock,
-        unit: schema.products.unit,
-        images: schema.products.images,
-        status: schema.products.status,
-        categoryId: schema.products.categoryId,
-        categoryName: schema.categories.name,
-        createdAt: schema.products.createdAt,
-        updatedAt: schema.products.updatedAt,
-      })
-      .from(schema.products)
-      .leftJoin(
-        schema.categories,
-        eq(schema.products.categoryId, schema.categories.id),
-      )
-      .where(and(...conditions))
-      .orderBy(orderBy)
-      .limit(limit)
-      .offset(offset);
+    // Run data and count queries in parallel
+    const [data, countResult] = await Promise.all([
+      this.db
+        .select({
+          id: schema.products.id,
+          name: schema.products.name,
+          slug: schema.products.slug,
+          description: schema.products.description,
+          price: schema.products.price,
+          stock: schema.products.stock,
+          unit: schema.products.unit,
+          images: schema.products.images,
+          status: schema.products.status,
+          categoryId: schema.products.categoryId,
+          categoryName: schema.categories.name,
+          createdAt: schema.products.createdAt,
+          updatedAt: schema.products.updatedAt,
+        })
+        .from(schema.products)
+        .leftJoin(
+          schema.categories,
+          eq(schema.products.categoryId, schema.categories.id),
+        )
+        .where(and(...conditions))
+        .orderBy(orderBy)
+        .limit(limit)
+        .offset(offset),
+
+      this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.products)
+        .leftJoin(
+          schema.categories,
+          eq(schema.products.categoryId, schema.categories.id),
+        )
+        .where(and(...conditions)),
+    ]);
+
+    const total = Number(countResult[0]?.count ?? 0);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async findOne(id: string): Promise<ProductWithCategory | undefined> {
@@ -185,7 +211,12 @@ export class ProductsService {
         schema.categories,
         eq(schema.products.categoryId, schema.categories.id),
       )
-      .where(eq(schema.products.id, id));
+      .where(
+        and(
+          eq(schema.products.id, id),
+          isNull(schema.products.deletedAt), // exclude soft-deleted
+        ),
+      );
 
     if (product) {
       // Cache for 5 minutes (300 seconds)
@@ -224,10 +255,27 @@ export class ProductsService {
   }
 
   async delete(id: string): Promise<schema.Product> {
+    // Soft-delete: set deletedAt and archive the product instead of hard-deleting.
+    // This preserves historical order_items references and avoids FK violations.
+    // Hard DELETE would break order history for any customer who bought this product.
     const [product] = await this.db
-      .delete(schema.products)
-      .where(eq(schema.products.id, id))
+      .update(schema.products)
+      .set({
+        deletedAt: new Date(),
+        status: 'archived',
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.products.id, id),
+          isNull(schema.products.deletedAt), // prevent double-delete
+        ),
+      )
       .returning();
+
+    if (!product) {
+      throw new EntityNotFoundError('Product not found or already deleted');
+    }
 
     // Invalidate the specific product cache
     await this.redisService.del(`product:${id}`);

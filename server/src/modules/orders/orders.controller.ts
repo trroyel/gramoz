@@ -6,6 +6,7 @@ import {
   Param,
   UseGuards,
   Patch,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 
@@ -43,7 +44,7 @@ export class OrdersController {
   }
 
   @Get(':id')
-  async getOrderDetails(@CurrentUser() user: User, @Param('id') id: string) {
+  async getOrderDetails(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     const orderDetails = await this.ordersService.getOrderDetails(user.id, id);
     return orderDetails;
   }
@@ -59,7 +60,7 @@ export class OrdersController {
   @Get('admin/:id')
   @UseGuards(RolesGuard)
   @Roles(...PLATFORM_ROLES)
-  async getOrderDetailsAsAdmin(@Param('id') id: string) {
+  async getOrderDetailsAsAdmin(@Param('id', ParseUUIDPipe) id: string) {
     const orderDetails = await this.ordersService.getOrderDetailsAsAdmin(id);
     return orderDetails;
   }
@@ -68,7 +69,7 @@ export class OrdersController {
   @UseGuards(RolesGuard)
   @Roles(...PLATFORM_ROLES)
   async updateOrderStatus(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body('status') status: string,
   ) {
     const updated = await this.ordersService.updateOrderStatus(id, status);

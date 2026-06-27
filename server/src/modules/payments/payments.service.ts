@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { EntityNotFoundError, InvalidOperationError, ForbiddenOperationError } from '../../common/errors/domain.errors';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import * as crypto from 'crypto';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
@@ -17,7 +17,6 @@ export class PaymentsService {
 
   private readonly storeId: string;
   private readonly storePasswd: string;
-  private readonly isSandbox: boolean;
   private readonly apiUrl: string;
 
   constructor(
@@ -28,10 +27,10 @@ export class PaymentsService {
       this.configService.get<string>('SSLCOMMERZ_STORE_ID') || 'testbox';
     this.storePasswd =
       this.configService.get<string>('SSLCOMMERZ_STORE_SECRET') || 'testpass';
-    this.isSandbox =
-      this.configService.get<string>('SSLCOMMERZ_IS_SANDBOX') !== 'false';
 
-    this.apiUrl = this.isSandbox
+    const isSandbox =
+      this.configService.get<string>('SSLCOMMERZ_IS_SANDBOX') !== 'false';
+    this.apiUrl = isSandbox
       ? 'https://sandbox.sslcommerz.com'
       : 'https://securepay.sslcommerz.com';
   }
@@ -43,26 +42,56 @@ export class PaymentsService {
    * Without this check, anyone can POST fake data to mark orders as paid.
    */
   private validateIpnSignature(ipnData: Record<string, string>): boolean {
-    const { verify_sign, verify_key, ...rest } = ipnData;
+    // SSLCommerz may send either verify_sign (MD5) or verify_sign_sha2 (SHA256)
+    const { verify_sign, verify_sign_sha2, verify_key, ...rest } = ipnData;
 
-    if (!verify_sign || !verify_key) {
-      this.logger.warn('IPN missing verify_sign or verify_key — rejecting');
+    if (!verify_sign && !verify_sign_sha2) {
+      this.logger.warn('IPN missing both verify_sign and verify_sign_sha2 — rejecting');
+      return false;
+    }
+    if (!verify_key) {
+      this.logger.warn('IPN missing verify_key — rejecting');
       return false;
     }
 
-    // Build the hash string: sort keys from verify_key, append store password
-    const keys = verify_key.split(',');
-    const parts = keys.map((key) => `${key}=${rest[key] ?? ''}`);
-    parts.push(`store_passwd=${md5(this.storePasswd)}`);
-    const hashString = parts.join('&');
+    const keys = verify_key.split(',').map(k => k.trim());
+    const parts = keys.map((key) => `${key}=${ipnData[key] ?? ''}`);
+    const baseHashString = parts.join('&');
 
-    const computedHash = md5(hashString);
-    const isValid = computedHash === verify_sign;
+    let isValid = false;
+
+    // 1. Try SHA256 (newer, preferred by SSLCommerz)
+    if (verify_sign_sha2) {
+      // For SHA256, SSLCommerz expects the RAW store password, not MD5
+      const hashStringSha2 = `${baseHashString}&store_passwd=${this.storePasswd}`;
+      const computedSha2 = crypto.createHash('sha256').update(hashStringSha2).digest('hex');
+      
+      if (computedSha2 === verify_sign_sha2) {
+        isValid = true;
+      } else {
+        this.logger.warn(`SHA256 mismatch. Expected: ${computedSha2}, Got: ${verify_sign_sha2}`);
+        this.logger.debug(`SHA256 Debug hash string: ${hashStringSha2}`);
+      }
+    }
+
+    // 2. Try MD5 fallback if SHA256 failed or wasn't provided
+    if (!isValid && verify_sign) {
+      // For MD5, SSLCommerz expects the MD5 of the store password
+      const hashStringMd5 = `${baseHashString}&store_passwd=${crypto.createHash('md5').update(this.storePasswd).digest('hex')}`;
+      const computedMd5 = crypto.createHash('md5').update(hashStringMd5).digest('hex');
+      
+      if (computedMd5 === verify_sign) {
+        isValid = true;
+      } else {
+        this.logger.warn(`MD5 mismatch. Expected: ${computedMd5}, Got: ${verify_sign}`);
+        this.logger.debug(`MD5 Debug hash string: ${hashStringMd5}`);
+      }
+    }
 
     if (!isValid) {
-      this.logger.warn(
-        `IPN signature mismatch — possible spoofing attempt. Expected: ${computedHash}, Got: ${verify_sign}`,
-      );
+      this.logger.warn('IPN signature mismatch — possible spoofing attempt.');
+      this.logger.debug(`IPN verify_key array: ${verify_key}`);
+      this.logger.debug(`IPN Data: ${JSON.stringify(ipnData)}`);
     }
     return isValid;
   }
@@ -254,18 +283,22 @@ export class PaymentsService {
   }
 
   async verifyPayment(ipnData: any) {
-    // Skip signature validation in sandbox mode to ease testing
-    if (!this.isSandbox) {
-      const isValid = this.validateIpnSignature(ipnData);
-      if (!isValid) {
-        this.logger.error(
-          'IPN signature validation failed — rejecting request',
-        );
+    // Attempt to validate the IPN signature locally
+    const isValid = this.validateIpnSignature(ipnData);
+    const { val_id, tran_id, status } = ipnData;
+
+    if (!isValid) {
+      // Local signature validation failed. This happens frequently in Node.js due to 
+      // URL decoding differences vs PHP, or undocumented SSLCommerz signature changes.
+      // If the gateway provided a val_id and claims it's VALID, we proceed to 
+      // the official Validation API as a fallback. The remote API is the ultimate source of truth.
+      if (val_id && status === 'VALID') {
+        this.logger.warn(`IPN signature mismatch, but val_id is present. Proceeding to Validation API as fallback.`);
+      } else {
+        this.logger.error('IPN signature validation failed and no val_id present to verify — rejecting request');
         return { success: false, message: 'Invalid IPN signature' };
       }
     }
-
-    const { val_id, tran_id, status } = ipnData;
 
     if (!val_id || status !== 'VALID') {
       return this.handleFailedPayment(tran_id, ipnData);
@@ -306,6 +339,22 @@ export class PaymentsService {
       return {
         success: true,
         message: 'Payment already processed (duplicate IPN ignored)',
+      };
+    }
+
+    // Amount verification — cross-check the gateway-reported amount against our
+    // stored payment record. A mismatch indicates tampering or a mis-applied IPN
+    // (e.g. a BDT 10 webhook being replayed against a BDT 10,000 order).
+    const gatewayAmount = parseFloat(validationData.amount ?? '0');
+    const expectedAmount = parseFloat(payment.amount);
+    if (Math.abs(gatewayAmount - expectedAmount) > 0.01) {
+      this.logger.error(
+        `Amount mismatch for transaction ${tranId}: ` +
+        `expected ${expectedAmount} BDT, gateway reported ${gatewayAmount} BDT — rejecting.`,
+      );
+      return {
+        success: false,
+        message: 'Payment amount mismatch — transaction rejected for security review',
       };
     }
 
@@ -397,11 +446,23 @@ export class PaymentsService {
       return;
     }
 
-    // Mark the most recent pending payment as failed and reset order to 'unpaid'
+    // Mark the most recent *pending* payment as failed and reset the order to 'unpaid'.
+    //
+    // Two bugs existed before this fix:
+    //   1. No ORDER BY — Postgres returns an arbitrary row when multiple payments exist.
+    //   2. No status filter — could accidentally void an already-completed payment,
+    //      turning a paid order back to 'unpaid' and losing revenue.
     const [pendingPayment] = await this.db
       .select()
       .from(schema.payments)
-      .where(eq(schema.payments.orderId, orderId));
+      .where(
+        and(
+          eq(schema.payments.orderId, orderId),
+          eq(schema.payments.status, 'pending'), // only target open payments
+        ),
+      )
+      .orderBy(desc(schema.payments.createdAt)) // most recent first
+      .limit(1);
 
     if (!pendingPayment) {
       this.logger.warn(`Cancel fallback: no payment found for orderId ${orderId}`);

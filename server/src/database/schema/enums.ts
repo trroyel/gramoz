@@ -8,6 +8,9 @@ export const roleEnum = pgEnum('role', [
   'customer',
 ]);
 
+// Explicit enum prevents silent typos ('ACTIVE' vs 'active') from bypassing auth checks
+export const userStatusEnum = pgEnum('user_status', ['active', 'suspended', 'deleted']);
+
 export const Role = {
   SUPER_ADMIN: 'super_admin',
   ADMIN: 'admin',

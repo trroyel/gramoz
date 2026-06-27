@@ -16,29 +16,13 @@ async function seed() {
     await db.insert(schema.users).values([
       {
         email: 'admin@gramoz.com',
-        passwordHash: '$2b$10$rZ5qH8qH8qH8qH8qH8qH8uO', // password: admin123 (hash this properly in production)
+        passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$KwkIzEJjLsqv2eW6K1sphg$uAmZCxfvI7qxYCTDvai+vOAfRaAsd/C1I+F5tkD49Ns', // password: password123
         fullName: 'Admin User',
         phone: '+8801712345678',
+        provider: 'local',
+        role: 'super_admin', //admin, support, manager,customer
         isEmailVerified: true,
         isPhoneVerified: true,
-        status: 'active',
-      },
-      {
-        email: 'seller@gramoz.com',
-        passwordHash: '$2b$10$rZ5qH8qH8qH8qH8qH8qH8uO', // password: seller123
-        fullName: 'Rural Seller',
-        phone: '+8801812345678',
-        isEmailVerified: true,
-        isPhoneVerified: false,
-        status: 'active',
-      },
-      {
-        email: 'customer@gramoz.com',
-        passwordHash: '$2b$10$rZ5qH8qH8qH8qH8qH8qH8uO', // password: customer123
-        fullName: 'Customer User',
-        phone: '+8801912345678',
-        isEmailVerified: false,
-        isPhoneVerified: false,
         status: 'active',
       },
     ]);

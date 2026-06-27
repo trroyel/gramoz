@@ -157,12 +157,27 @@ export class OrdersService {
         .delete(schema.cartItems)
         .where(eq(schema.cartItems.userId, userId));
 
-      // 8. Increment promo usage if applicable
+      // 7. Atomically increment promo usage — the conditional WHERE ensures we
+      //    never exceed maxUses even under concurrent checkouts (TOCTOU fix).
+      //    0 rows returned = another request just consumed the last use → abort.
       if (appliedPromoId) {
-        await tx
+        const [updatedPromo] = await tx
           .update(schema.promos)
           .set({ currentUses: sql`${schema.promos.currentUses} + 1` })
-          .where(eq(schema.promos.id, appliedPromoId));
+          .where(
+            and(
+              eq(schema.promos.id, appliedPromoId),
+              // Only succeed if still under the usage limit (or no limit set)
+              sql`(${schema.promos.maxUses} IS NULL OR ${schema.promos.currentUses} < ${schema.promos.maxUses})`,
+            ),
+          )
+          .returning({ id: schema.promos.id });
+
+        if (!updatedPromo) {
+          throw new InvalidOperationError(
+            'This promo code just reached its usage limit. Please try without a promo code.',
+          );
+        }
       }
 
       // Fetch user info inside the transaction so it's available for the
@@ -172,33 +187,33 @@ export class OrdersService {
         .from(schema.users)
         .where(eq(schema.users.id, userId));
 
-      return { order, items: cartItems, user };
-    });
+      // 8a. Enqueue order confirmation email — inside the transaction so this
+      //     outbox entry is NEVER lost even if the process crashes post-commit.
+      if (user) {
+        const emailItems = cartItems.map((i) => ({
+          productName: i.productName ?? 'Product',
+          quantity: i.quantity,
+          unitPrice: i.productPrice ?? '0',
+        }));
+        await tx.insert(schema.outboxEvents).values({
+          type: 'SEND_ORDER_CONFIRMATION',
+          payload: {
+            email: user.email,
+            fullName: user.fullName,
+            orderId: order.id,
+            items: emailItems,
+            totalAmount: order.totalAmount,
+          },
+        });
+      }
 
-    // 7. Enqueue order confirmation email via the outbox.
-    //    The payload is self-contained — the processor won't need to re-query.
-    if (result.user) {
-      const emailItems = result.items.map((i) => ({
-        productName: i.productName ?? 'Product',
-        quantity: i.quantity,
-        unitPrice: i.productPrice ?? '0',
-      }));
-      await this.db.insert(schema.outboxEvents).values({
-        type: 'SEND_ORDER_CONFIRMATION',
-        payload: {
-          email: result.user.email,
-          fullName: result.user.fullName,
-          orderId: result.order.id,
-          items: emailItems,
-          totalAmount: result.order.totalAmount,
-        },
+      // 8b. Enqueue low-stock check — also inside the transaction for the same reason.
+      await tx.insert(schema.outboxEvents).values({
+        type: 'SEND_LOW_STOCK_ALERT',
+        payload: { productIds: cartItems.map((i) => i.productId!) },
       });
-    }
 
-    // 8. Enqueue low-stock check via the outbox.
-    await this.db.insert(schema.outboxEvents).values({
-      type: 'SEND_LOW_STOCK_ALERT',
-      payload: { productIds: result.items.map((i) => i.productId!) },
+      return { order, items: cartItems, user };
     });
 
     return result.order;

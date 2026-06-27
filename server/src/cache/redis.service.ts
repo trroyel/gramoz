@@ -1,4 +1,5 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { randomInt } from 'crypto';
 import Redis from 'ioredis';
 import { ConfigService } from '@config/config.service';
 
@@ -89,9 +90,30 @@ export class RedisService implements OnModuleDestroy {
     await this.client.del(key);
   }
 
-  // Generate 8-digit code
+  // OTP brute-force protection \u2014 tracks failed verify attempts per email.
+  // The counter key is namespaced separately from the code itself so clearing
+  // one does not affect the other.
+  async incrementVerifyAttempts(email: string): Promise<number> {
+    const key = `auth:verify:attempts:${email}`;
+    const count = await this.client.incr(key);
+    if (count === 1) {
+      // Set TTL on first increment to match the code lifetime (4 hours by default).
+      // This way the counter automatically expires with the code.
+      await this.client.expire(key, 4 * 60 * 60);
+    }
+    return count;
+  }
+
+  async clearVerifyAttempts(email: string): Promise<void> {
+    await this.client.del(`auth:verify:attempts:${email}`);
+  }
+
+  // Generate an 8-digit cryptographically secure OTP code.
+  // crypto.randomInt(min, max) uses the OS CSPRNG — unlike Math.random(),
+  // its output cannot be predicted by observing previous values.
+  // Range: 10_000_000–99_999_999 (inclusive min, exclusive max) = 8 digits guaranteed.
   generateCode(): string {
-    return Math.floor(10000000 + Math.random() * 90000000).toString();
+    return randomInt(10_000_000, 100_000_000).toString();
   }
 
   // Parse duration string to seconds (e.g., "15m" -> 900, "7d" -> 604800)

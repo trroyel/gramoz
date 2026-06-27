@@ -5,19 +5,28 @@ export const API_BASE_URL = isServer
   ? (process.env.INTERNAL_API_URL || 'http://localhost:5000/api/v1')
   : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1');
 
-let isRefreshing = false;
-let refreshSubscribers: ((success: boolean) => void)[] = [];
-
-function onRefreshed(success: boolean) {
-  refreshSubscribers.forEach((callback) => callback(success));
-  refreshSubscribers = [];
-}
-
-function addRefreshSubscriber(callback: (success: boolean) => void) {
-  refreshSubscribers.push(callback);
-}
-
 export class HttpClient {
+  // ── Refresh-lock state ─────────────────────────────────────────────────────
+  // IMPORTANT: These MUST be instance variables, NOT module-level globals.
+  //
+  // In Next.js SSR, modules are shared across all concurrent requests in the
+  // same Node.js process. Module-level `isRefreshing` would be shared between
+  // different users' requests — User A's refresh could prevent User B's 401
+  // from triggering its own refresh, or subscriber callbacks could fire in the
+  // wrong request context (cross-user state leak).
+  //
+  // Instance variables are safe because each import creates its own HttpClient.
+  private isRefreshing = false;
+  private refreshSubscribers: ((success: boolean) => void)[] = [];
+
+  private onRefreshed(success: boolean) {
+    this.refreshSubscribers.forEach((cb) => cb(success));
+    this.refreshSubscribers = [];
+  }
+
+  private addRefreshSubscriber(callback: (success: boolean) => void) {
+    this.refreshSubscribers.push(callback);
+  }
 
   public async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
@@ -45,37 +54,54 @@ export class HttpClient {
 
     if (!response.ok) {
       if (response.status === 401 && typeof window !== 'undefined' && endpoint !== '/auth/refresh') {
-        if (!isRefreshing) {
-          isRefreshing = true;
+        // FormData bodies are one-time-read streams — they cannot be replayed after
+        // the first fetch() has consumed them. Don't attempt a retry; instead surface
+        // a clear error so the user knows to re-submit the form.
+        const isStreamBody = options?.body instanceof FormData;
+
+        if (!this.isRefreshing) {
+          this.isRefreshing = true;
           try {
             const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh`, {
               method: 'POST',
               credentials: 'include',
             });
-            
+
             if (refreshRes.ok) {
-              isRefreshing = false;
-              onRefreshed(true);
-              // Retry original request
+              this.isRefreshing = false;
+              this.onRefreshed(true);
+              // Only replay if the body can be safely re-read (JSON string, no body, etc.)
+              if (isStreamBody) {
+                throw new Error('Session refreshed. Please try again.');
+              }
               return this.request(endpoint, options);
             } else {
               throw new Error('Refresh failed');
             }
-          } catch (e) {
-            isRefreshing = false;
-            onRefreshed(false);
-            import('@/stores/auth-store').then(({ useAuthStore }) => {
-              useAuthStore.getState().clearAuth();
-              window.location.href = '/login';
-            });
-            throw new Error('Session expired. Please log in again.');
+          } catch (e: any) {
+            this.isRefreshing = false;
+            this.onRefreshed(false);
+            // Only redirect on actual auth failure, not on stream-body errors
+            if (!isStreamBody || e?.message === 'Refresh failed') {
+              import('@/stores/auth-store').then(({ useAuthStore }) => {
+                useAuthStore.getState().clearAuth();
+                window.location.href = '/login';
+              });
+            }
+            throw new Error(e?.message === 'Session refreshed. Please try again.'
+              ? e.message
+              : 'Session expired. Please log in again.');
           }
         } else {
           // Wait for the ongoing refresh to complete
           return new Promise<T>((resolve, reject) => {
-            addRefreshSubscriber((success) => {
+            this.addRefreshSubscriber((success) => {
               if (success) {
-                resolve(this.request<T>(endpoint, options));
+                if (isStreamBody) {
+                  reject(new Error('Session refreshed. Please try again.'));
+                } else {
+                  resolve(this.request<T>(endpoint, options));
+                }
               } else {
                 reject(new Error('Session expired'));
               }
@@ -84,13 +110,23 @@ export class HttpClient {
         }
       }
 
+
       let errorMessage = `HTTP ${response.status}`;
       try {
-        const errorData = await response.json();
-        errorMessage = errorData?.error?.message || errorData?.message || JSON.stringify(errorData);
+        // A Response body is a one-time-read stream — calling response.json()
+        // and then response.text() in the catch will always throw
+        // "body stream already read". Read as text once, then parse.
+        const rawText = await response.text();
+        if (rawText) {
+          try {
+            const errorData = JSON.parse(rawText);
+            errorMessage = errorData?.error?.message || errorData?.message || JSON.stringify(errorData);
+          } catch {
+            errorMessage = rawText;
+          }
+        }
       } catch {
-        const textError = await response.text();
-        errorMessage = textError || errorMessage;
+        // Network-level error reading the body — keep the default HTTP status message
       }
 
       throw new Error(errorMessage);

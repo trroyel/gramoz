@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import type { FastifyRequest } from 'fastify';
+import { Readable } from 'stream';
 
 @Injectable()
 export class FastifyFileUploadInterceptor implements NestInterceptor {
@@ -21,20 +22,31 @@ export class FastifyFileUploadInterceptor implements NestInterceptor {
     }
 
     const parsedBody: Record<string, any> = {};
-    let uploadedFile: { filename: string; mimetype: string; file: any } | undefined;
+    let uploadedFile: { filename: string; mimetype: string; file: Readable } | undefined;
 
     try {
       const parts = req.parts();
       for await (const part of parts) {
         if (part.type === 'file' && part.filename) {
           if (!part.mimetype.startsWith('image/')) {
+            // Drain the stream to avoid leaving the multipart body in a broken state
+            await part.toBuffer().catch(() => {});
             throw new BadRequestException('Only image files are allowed');
           }
-          // Fastify Multipart parses streams. The storage service will consume `part.file`
+
+          // IMPORTANT: part.file is a live stream tied to the multipart iterator.
+          // When the iterator advances to the next part (or finishes), the stream
+          // is closed by @fastify/multipart — reading it later in the controller
+          // will always fail (ECONNRESET / empty read).
+          //
+          // Solution: buffer the bytes NOW while the stream is still open,
+          // then wrap in a fresh Readable so StorageService.upload() gets a
+          // normal, re-readable stream.
+          const buffer = await part.toBuffer();
           uploadedFile = {
             filename: part.filename,
             mimetype: part.mimetype,
-            file: part.file,
+            file: Readable.from(buffer),
           };
         } else if (part.type === 'field') {
           parsedBody[part.fieldname] = part.value;

@@ -16,15 +16,15 @@ export const useCategories = () => {
 export const useCreateCategory = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; slug: string; description?: string }) => categoriesApi.create(data),
+    mutationFn: (data: { name: string; description?: string }) => categoriesApi.create(data),
     onSuccess: (res) => {
       if (res.success) {
         toast.success('Category created successfully');
         queryClient.invalidateQueries({ queryKey: ['categories'] });
       }
     },
-    onError: () => {
-      toast.error('Failed to create category');
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to create category');
     },
   });
 };
@@ -32,7 +32,7 @@ export const useCreateCategory = () => {
 export const useUpdateCategory = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name?: string; slug?: string; description?: string } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { name?: string; description?: string } }) =>
       categoriesApi.update(id, data),
     onSuccess: (res) => {
       if (res.success) {
@@ -40,8 +40,8 @@ export const useUpdateCategory = () => {
         queryClient.invalidateQueries({ queryKey: ['categories'] });
       }
     },
-    onError: () => {
-      toast.error('Failed to update category');
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update category');
     },
   });
 };
@@ -56,8 +56,8 @@ export const useDeleteCategory = () => {
         queryClient.invalidateQueries({ queryKey: ['categories'] });
       }
     },
-    onError: () => {
-      toast.error('Failed to delete category');
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete category');
     },
   });
 };

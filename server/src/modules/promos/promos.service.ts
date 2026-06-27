@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { EntityNotFoundError, InvalidOperationError, EntityConflictError } from '../../common/errors/domain.errors';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, or, isNull, gt, sql } from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
 import { CreatePromoDto } from './dto/create-promo.dto';
@@ -52,19 +52,31 @@ export class PromosService {
 
   /**
    * Returns promos safe to display publicly:
-   * isActive, not expired, not exhausted.
+   * isActive=true, not expired, not exhausted.
+   *
+   * All three filters are pushed to the DB — avoids fetching the entire
+   * promos table into Node.js memory just to filter it in JavaScript.
    */
   async findPublicActive() {
-    const all = await this.db.query.promos.findMany({
-      where: eq(schema.promos.isActive, true),
-      orderBy: [desc(schema.promos.createdAt)],
-    });
-    const now = new Date();
-    return all.filter((p) => {
-      if (p.expiresAt && new Date(p.expiresAt) < now) return false;
-      if (p.maxUses !== null && p.currentUses >= p.maxUses) return false;
-      return true;
-    });
+    return this.db
+      .select()
+      .from(schema.promos)
+      .where(
+        and(
+          eq(schema.promos.isActive, true),
+          // Not expired (or no expiry set)
+          or(
+            isNull(schema.promos.expiresAt),
+            gt(schema.promos.expiresAt, new Date()),
+          ),
+          // Not exhausted (or no usage limit set)
+          or(
+            isNull(schema.promos.maxUses),
+            sql`${schema.promos.currentUses} < ${schema.promos.maxUses}`,
+          ),
+        ),
+      )
+      .orderBy(desc(schema.promos.createdAt));
   }
 
   async findOne(id: string) {

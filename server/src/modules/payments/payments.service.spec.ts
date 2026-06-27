@@ -7,6 +7,8 @@ import {
 import { PaymentsService } from './payments.service';
 import { DATABASE } from '@database/database.module';
 import { ConfigService } from '@nestjs/config';
+import { EntityNotFoundError, ForbiddenOperationError, InvalidOperationError } from '../../common/errors/domain.errors';
+import * as crypto from 'crypto';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -17,7 +19,7 @@ const MOCK_PAYMENT_ID = 'payment-uuid-001';
 const mockPendingOrder = {
   id: MOCK_ORDER_ID,
   userId: MOCK_USER_ID,
-  status: 'pending',
+  paymentStatus: 'unpaid',
   totalAmount: '500.00',
   shippingAddressId: 'addr-uuid-001',
   createdAt: new Date(),
@@ -111,42 +113,33 @@ describe('PaymentsService', () => {
   // ── initiateCod ─────────────────────────────────────────────────────────────
 
   describe('initiateCod', () => {
-    it('throws NotFoundException when order does not exist', async () => {
+    it('throws EntityNotFoundError when order does not exist', async () => {
       const service = await buildService([[]]); // 1st select → []
       await expect(
         service.initiateCod(MOCK_USER_ID, MOCK_ORDER_ID),
-      ).rejects.toThrow(NotFoundException);
+      ).rejects.toThrow(EntityNotFoundError);
     });
 
-    it('throws ForbiddenException when order belongs to another user', async () => {
+    it('throws ForbiddenOperationError when order belongs to another user', async () => {
       const otherOrder = { ...mockPendingOrder, userId: 'other-user' };
       const service = await buildService([[otherOrder]]);
       await expect(
         service.initiateCod(MOCK_USER_ID, MOCK_ORDER_ID),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow(ForbiddenOperationError);
     });
 
-    it('throws BadRequestException when order is not pending', async () => {
-      const deliveredOrder = { ...mockPendingOrder, status: 'delivered' };
-      const service = await buildService([[deliveredOrder]]);
+    it('throws InvalidOperationError when order is not pending', async () => {
+      const initiatedOrder = { ...mockPendingOrder, paymentStatus: 'initiated' };
+      const service = await buildService([[initiatedOrder]]);
       await expect(
         service.initiateCod(MOCK_USER_ID, MOCK_ORDER_ID),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('throws BadRequestException when payment already exists for order', async () => {
-      // 1st select → pending order; 2nd select → existing payment
-      const service = await buildService([[mockPendingOrder], [mockPayment]]);
-      await expect(
-        service.initiateCod(MOCK_USER_ID, MOCK_ORDER_ID),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(InvalidOperationError);
     });
 
     it('creates and returns a COD payment record when all conditions pass', async () => {
-      // 1st select → order; 2nd select → no existing payment; insert returning → new payment
+      // 1st select → order; 2nd insert returning → new payment
       const service = await buildService([
         [mockPendingOrder],
-        [],
         [mockPayment],
       ]);
       const result = await service.initiateCod(MOCK_USER_ID, MOCK_ORDER_ID);
@@ -154,42 +147,103 @@ describe('PaymentsService', () => {
     });
   });
 
-  // ── verifyPayment / IPN ──────────────────────────────────────────────────────
+  describe('verifyPayment & handleSuccessfulPayment', () => {
+    // Helper to generate a valid SSLCommerz IPN signature for tests
+    const generateValidSignature = (ipnData: Record<string, string>, storePasswd = 'test-secret') => {
+      const keys = ipnData.verify_key.split(',');
+      const parts = keys.map((key) => `${key}=${ipnData[key] ?? ''}`);
+      const hashedPasswd = crypto.createHash('md5').update(storePasswd).digest('hex');
+      parts.push(`store_passwd=${hashedPasswd}`);
+      const hashString = parts.join('&');
+      return crypto.createHash('md5').update(hashString).digest('hex');
+    };
 
-  describe('verifyPayment', () => {
-    it('handles FAILED IPN status without throwing', async () => {
-      // handleFailedPayment does a select → returns empty (payment not found)
-      const service = await buildService([[]]);
-      const result = await service.verifyPayment({
-        val_id: 'v1',
-        tran_id: 'tran-001',
-        status: 'FAILED',
-      });
-      expect(result).toBeDefined();
+    beforeEach(() => {
+      global.fetch = jest.fn();
     });
 
-    it('passes through in sandbox mode without checking signature', async () => {
-      // sandbox skips signature check; after VALID status it queries payment → empty
-      const service = await buildService([[], []]);
-      await expect(
-        service.verifyPayment({
-          val_id: 'v1',
-          tran_id: 'tran-001',
-          status: 'VALID',
-          verify_sign: 'WRONG',
-          verify_key: 'tran_id',
-        }),
-      ).resolves.toBeDefined();
+    afterEach(() => {
+      jest.restoreAllMocks();
     });
 
-    it('rejects IPN in production mode when verify_sign is missing', async () => {
-      const service = await buildService([[]], productionConfig);
+    it('rejects IPN unconditionally if verify_sign or verify_key is missing', async () => {
+      const service = await buildService([[]], sandboxConfig); // Even in sandbox!
       const result = await service.verifyPayment({
         tran_id: 'tran-001',
         status: 'VALID',
-        // no verify_sign / verify_key → signature check fails
+        // missing verify_sign and verify_key
       });
-      expect(result).toMatchObject({ success: false });
+      expect(result).toMatchObject({ success: false, message: 'Invalid IPN signature' });
+    });
+
+    it('rejects IPN unconditionally if verify_sign is invalid', async () => {
+      const service = await buildService([[]], sandboxConfig);
+      const result = await service.verifyPayment({
+        tran_id: 'tran-001',
+        status: 'VALID',
+        verify_key: 'tran_id',
+        verify_sign: 'WRONG_SIGNATURE_HASH',
+      });
+      expect(result).toMatchObject({ success: false, message: 'Invalid IPN signature' });
+    });
+
+    it('returns success: false if payment amount does not match IPN amount', async () => {
+      // 1. Setup IPN data with a valid signature
+      const ipnData = {
+        val_id: 'v1',
+        tran_id: MOCK_PAYMENT_ID,
+        status: 'VALID',
+        amount: '100.00', // IPN says 100
+        verify_key: 'tran_id,amount',
+      };
+      const signature = generateValidSignature(ipnData);
+      const signedIpn = { ...ipnData, verify_sign: signature };
+
+      // 2. Mock fetch for the validation API call
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        json: async () => ({ status: 'VALIDATED', amount: '100.00' }), // Validation API says 100
+      });
+
+      // 3. Mock DB: payment row says 500 (tampering detected!)
+      // 1st query in handleSuccessfulPayment -> select payment
+      const dbPayment = { ...mockPayment, amount: '500.00', transactionId: MOCK_PAYMENT_ID };
+      const service = await buildService([[dbPayment]], sandboxConfig);
+
+      // 4. Assert
+      const result = await service.verifyPayment(signedIpn);
+      expect(result).toMatchObject({
+        success: false,
+        message: 'Payment amount mismatch — transaction rejected for security review',
+      });
+    });
+
+    it('processes successful payment when signature and amount both match', async () => {
+      const ipnData = {
+        val_id: 'v1',
+        tran_id: MOCK_PAYMENT_ID,
+        status: 'VALID',
+        amount: '500.00',
+        verify_key: 'tran_id,amount',
+      };
+      const signedIpn = { ...ipnData, verify_sign: generateValidSignature(ipnData) };
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        json: async () => ({ status: 'VALIDATED', amount: '500.00' }),
+      });
+
+      // DB calls in handleSuccessfulPayment:
+      // 1. select payment -> returns payment (amount 500.00 matches)
+      // 2. select order -> returns pending order
+      // 3. tx.update(payments) -> returns updated payment
+      // 4. tx.update(orders) -> returns updated order
+      const service = await buildService(
+        [[mockPayment], [mockPendingOrder], [mockPayment], [mockPendingOrder]],
+        sandboxConfig,
+      );
+
+      const result = await service.verifyPayment(signedIpn);
+
+      expect(result).toMatchObject({ success: true, message: 'Payment verified and order is now processing' });
     });
   });
 });

@@ -57,6 +57,13 @@
       "when": 1781173789803,
       "tag": "0007_round_boom_boom",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782541312448,
+      "tag": "0008_true_oracle",
+      "breakpoints": true
     }
   ]
 }

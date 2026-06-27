@@ -53,7 +53,7 @@ async function bootstrap() {
   // ── File uploads ────────────────────────────────────────────────────────
   await app.register(multipart, {
     limits: {
-      fileSize: 2 * 1024 * 1024, // 10 MB per file
+      fileSize: 2 * 1024 * 1024, // 2 MB per file
       files: 1, // max 1 file per request
       fields: 20, // max 20 non-file fields
     },
@@ -81,7 +81,8 @@ async function bootstrap() {
 
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,
+      whitelist: true,            // strip unknown fields
+      forbidNonWhitelisted: true, // AND reject the request if any are present
       transform: true,
     }),
   );

@@ -126,16 +126,38 @@ export class AuthService {
   }
 
   async verifyEmail(dto: VerifyEmailDto) {
-    // Get stored code
+    // Get stored code — expired or never-sent codes return null
     const storedCode = await this.redis.getVerificationCode(dto.email);
     if (!storedCode) {
       throw new BadRequestException('Verification code expired or invalid');
     }
 
-    // Verify code
-    if (storedCode !== dto.code) {
-      throw new BadRequestException('Invalid verification code');
+    // Brute-force protection: increment BEFORE comparing so a correct guess
+    // on the 6th attempt is still rejected (counter already at MAX).
+    const MAX_ATTEMPTS = 5;
+    const attempts = await this.redis.incrementVerifyAttempts(dto.email);
+
+    if (attempts > MAX_ATTEMPTS) {
+      // Invalidate the code so the attacker can't keep trying with a fresh rate limit
+      await this.redis.deleteVerificationCode(dto.email);
+      await this.redis.clearVerifyAttempts(dto.email);
+      throw new BadRequestException(
+        'Too many failed attempts. Your verification code has been invalidated — please request a new one.',
+      );
     }
+
+    if (storedCode !== dto.code) {
+      const remaining = MAX_ATTEMPTS - attempts;
+      throw new BadRequestException(
+        remaining > 0
+          ? `Invalid verification code. ${remaining} attempt(s) remaining.`
+          : 'Invalid verification code. No attempts remaining — please request a new code.',
+      );
+    }
+
+    // Code is correct — clear both the code and the attempt counter
+    await this.redis.deleteVerificationCode(dto.email);
+    await this.redis.clearVerifyAttempts(dto.email);
 
     // Find user
     const user = await this.userRepository.findByEmail(dto.email);
@@ -145,9 +167,6 @@ export class AuthService {
 
     // Update user
     await this.userRepository.update(user.id, { isEmailVerified: true });
-
-    // Delete verification code
-    await this.redis.deleteVerificationCode(dto.email);
 
     // Send welcome email
     await this.mail.sendWelcomeEmail(user.email, user.fullName);

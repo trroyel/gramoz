@@ -90,12 +90,12 @@ export class MailService {
   async sendLowStockAlert(
     products: Array<{ name: string; stock: number; threshold: number }>,
   ): Promise<void> {
-    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminEmail = this.config.adminEmail;
     if (!adminEmail) {
       this.logger.warn('ADMIN_EMAIL not set — skipping low-stock alert email');
       return;
     }
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+    const frontendUrl = this.config.frontendUrl;
     try {
       await this.resend.emails.send({
         from: this.config.emailFrom,

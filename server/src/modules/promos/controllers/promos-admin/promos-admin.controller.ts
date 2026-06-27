@@ -7,6 +7,7 @@ import {
   Put,
   Delete,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { PromosService } from '../../promos.service';
 import { CreatePromoDto } from '../../dto/create-promo.dto';
@@ -36,19 +37,19 @@ export class PromosAdminController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const promo = await this.promosService.findOne(id);
     return { success: true, data: promo };
   }
 
   @Put(':id/toggle')
-  async toggleActive(@Param('id') id: string) {
+  async toggleActive(@Param('id', ParseUUIDPipe) id: string) {
     const promo = await this.promosService.toggleActive(id);
     return { success: true, data: promo };
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
     await this.promosService.delete(id);
     return { success: true };
   }

@@ -46,7 +46,7 @@ export class UsersAdminService {
     }
 
     if (status) {
-      conditions.push(eq(schema.users.status, status));
+      conditions.push(eq(schema.users.status, status as any));
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -177,7 +177,7 @@ export class UsersAdminService {
   async updateStatus(targetUserId: string, newStatus: string) {
     const [user] = await this.db
       .update(schema.users)
-      .set({ status: newStatus, updatedAt: new Date() })
+      .set({ status: newStatus as any, updatedAt: new Date() })
       .where(eq(schema.users.id, targetUserId))
       .returning();
 

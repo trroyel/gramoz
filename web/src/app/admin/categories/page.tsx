@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -32,48 +33,42 @@ export default function CategoriesPage() {
 
   const [formData, setFormData] = useState({
     name: "",
-    slug: "",
     description: "",
   });
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const name = e.target.value;
-    setFormData({
-      ...formData,
-      name,
-      // Auto-generate slug if we are creating, or if the user hasn't manually altered it
-      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, ""),
-    });
+    setFormData({ ...formData, name });
   };
 
   const handleCreateOrUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.slug) {
-      toast.error("Name and slug are required");
+    if (!formData.name) {
+      toast.error("Name is required");
       return;
     }
 
+    const payload = { name: formData.name, description: formData.description || undefined };
     if (editingId) {
       updateCategory.mutate(
-        { id: editingId, data: formData },
+        { id: editingId, data: payload },
         { onSuccess: () => closeAndResetModal() }
       );
     } else {
-      createCategory.mutate(formData, { onSuccess: () => closeAndResetModal() });
+      createCategory.mutate(payload, { onSuccess: () => closeAndResetModal() });
     }
   };
 
   const closeAndResetModal = () => {
     setIsModalOpen(false);
     setEditingId(null);
-    setFormData({ name: "", slug: "", description: "" });
+    setFormData({ name: "", description: "" });
   };
 
   const openEditModal = (category: Category) => {
     setEditingId(category.id);
     setFormData({
       name: category.name || "",
-      slug: category.slug || "",
       description: category.description || "",
     });
     setIsModalOpen(true);
@@ -81,7 +76,7 @@ export default function CategoriesPage() {
 
   const openCreateModal = () => {
     setEditingId(null);
-    setFormData({ name: "", slug: "", description: "" });
+    setFormData({ name: "", description: "" });
     setIsModalOpen(true);
   };
 
@@ -175,6 +170,11 @@ export default function CategoriesPage() {
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>{editingId ? "Edit Category" : "Add New Category"}</DialogTitle>
+            <DialogDescription>
+              {editingId
+                ? "Update the details of this category."
+                : "Fill in the details below to create a new category."}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateOrUpdate} className="space-y-4 pt-4">
             <div className="space-y-2">
@@ -187,15 +187,15 @@ export default function CategoriesPage() {
                 required
               />
             </div>
-            
+
             <div className="space-y-2">
-              <Label htmlFor="slug">Slug (URL-friendly)</Label>
+              <Label htmlFor="slug">Slug (auto-generated)</Label>
               <Input
                 id="slug"
-                value={formData.slug}
-                onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                placeholder="e.g. electronics"
-                required
+                value={formData.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, "") || ""}
+                readOnly
+                disabled
+                className="bg-muted text-muted-foreground cursor-not-allowed"
               />
             </div>
 
