@@ -11,3 +11,7 @@ export * from './notifications';
 export * from './refunds';
 export * from './promos';
 export * from './outbox';
+export * from './settings';
+export * from './reviews';
+export * from './loyalty';
+export * from './wishlists';

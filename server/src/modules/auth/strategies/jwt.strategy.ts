@@ -3,7 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import type { FastifyRequest } from 'fastify';
 import { ConfigService } from '@config/config.service';
-import { UserRepository } from '@modules/users/user.repository';
+import { UsersStore } from '@modules/users/users.store';
 
 export interface JwtPayload {
   sub: string;
@@ -27,7 +27,7 @@ function cookieOrBearerExtractor(req: FastifyRequest): string | null {
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     private readonly config: ConfigService,
-    private readonly userRepository: UserRepository,
+    private readonly usersStore: UsersStore,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
@@ -40,7 +40,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
-    const user = await this.userRepository.findById(payload.sub);
+    const user = await this.usersStore.findById(payload.sub);
 
     if (!user || user.status !== 'active') {
       throw new UnauthorizedException('Invalid token or user inactive');

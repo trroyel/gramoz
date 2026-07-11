@@ -11,7 +11,9 @@ import {
   LayoutDashboard,
   Package,
   MapPin,
-  ShoppingBag
+  ShoppingBag,
+  Coins,
+  Heart
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
@@ -19,6 +21,8 @@ import { Button } from "@/components/ui/button";
 const sidebarLinks = [
   { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { name: "My Orders", href: "/dashboard/orders", icon: Package },
+  { name: "Wishlist", href: "/dashboard/wishlist", icon: Heart },
+  { name: "Loyalty Rewards", href: "/dashboard/loyalty", icon: Coins },
   { name: "Addresses", href: "/dashboard/addresses", icon: MapPin },
   { name: "Profile", href: "/dashboard/profile", icon: UserIcon },
 ];

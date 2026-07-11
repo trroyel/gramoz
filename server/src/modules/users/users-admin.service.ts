@@ -1,20 +1,15 @@
 import {
-  Inject,
   Injectable,
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
-import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { DATABASE } from '@database/database.module';
-import * as schema from '@database/schema';
-import { eq, or, ilike, desc, asc, count, sum, sql, and } from 'drizzle-orm';
 import { GetUsersQueryDto } from './dto/users-admin.dto';
+import { UsersStore } from './users.store';
 
 @Injectable()
 export class UsersAdminService {
   constructor(
-    @Inject(DATABASE)
-    private readonly db: NodePgDatabase<typeof schema>,
+    private readonly usersStore: UsersStore,
   ) {}
 
   async getUsers(query: GetUsersQueryDto) {
@@ -27,125 +22,30 @@ export class UsersAdminService {
       sortBy,
       sortOrder,
     } = query;
-    const offset = (page - 1) * limit;
 
-    const conditions = [];
-
-    if (search) {
-      conditions.push(
-        or(
-          ilike(schema.users.fullName, `%${search}%`),
-          ilike(schema.users.email, `%${search}%`),
-          ilike(schema.users.phone, `%${search}%`),
-        ),
-      );
-    }
-
-    if (role) {
-      conditions.push(eq(schema.users.role, role as any));
-    }
-
-    if (status) {
-      conditions.push(eq(schema.users.status, status as any));
-    }
-
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-    // Use SQL aggregation to get total orders and total spending without N+1
-    const baseQuery = this.db
-      .select({
-        id: schema.users.id,
-        email: schema.users.email,
-        fullName: schema.users.fullName,
-        phone: schema.users.phone,
-        role: schema.users.role,
-        status: schema.users.status,
-        createdAt: schema.users.createdAt,
-        lastLoginAt: schema.users.lastLoginAt,
-        totalOrders: count(schema.orders.id).as('total_orders'),
-        totalSpending:
-          sql<number>`COALESCE(SUM(${schema.orders.totalAmount}), 0)`.as(
-            'total_spending',
-          ),
-      })
-      .from(schema.users)
-      .leftJoin(schema.orders, eq(schema.users.id, schema.orders.userId))
-      .where(whereClause)
-      .groupBy(schema.users.id);
-
-    // Apply sorting
-    let orderClause;
-    if (sortBy === 'totalOrders') {
-      orderClause =
-        sortOrder === 'asc'
-          ? asc(sql`count(${schema.orders.id})`)
-          : desc(sql`count(${schema.orders.id})`);
-    } else if (sortBy === 'totalSpending') {
-      orderClause =
-        sortOrder === 'asc'
-          ? asc(sql`sum(${schema.orders.totalAmount})`)
-          : desc(sql`sum(${schema.orders.totalAmount})`);
-    } else {
-      const allowedSortColumns: Record<string, any> = {
-        email: schema.users.email,
-        fullName: schema.users.fullName,
-        phone: schema.users.phone,
-        role: schema.users.role,
-        status: schema.users.status,
-        createdAt: schema.users.createdAt,
-        lastLoginAt: schema.users.lastLoginAt,
-      };
-      const sortColumn = allowedSortColumns[sortBy] || schema.users.createdAt;
-      orderClause = sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn);
-    }
-
-    const data = await baseQuery
-      .orderBy(orderClause)
-      .limit(limit)
-      .offset(offset);
-
-    // Count query for pagination
-    const countQuery = await this.db
-      .select({ count: count() })
-      .from(schema.users)
-      .where(whereClause);
-
-    const total = Number(countQuery[0].count);
+    const result = await this.usersStore.getUsersWithStats(
+      page,
+      limit,
+      search,
+      role,
+      status,
+      sortBy,
+      sortOrder
+    );
 
     return {
-      data,
+      data: result.data,
       meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
       },
     };
   }
 
   async getUserDetails(id: string) {
-    const [user] = await this.db
-      .select({
-        id: schema.users.id,
-        email: schema.users.email,
-        fullName: schema.users.fullName,
-        phone: schema.users.phone,
-        role: schema.users.role,
-        status: schema.users.status,
-        isEmailVerified: schema.users.isEmailVerified,
-        isPhoneVerified: schema.users.isPhoneVerified,
-        createdAt: schema.users.createdAt,
-        lastLoginAt: schema.users.lastLoginAt,
-        totalOrders: count(schema.orders.id).as('total_orders'),
-        totalSpending:
-          sql<number>`COALESCE(SUM(${schema.orders.totalAmount}), 0)`.as(
-            'total_spending',
-          ),
-      })
-      .from(schema.users)
-      .leftJoin(schema.orders, eq(schema.users.id, schema.orders.userId))
-      .where(eq(schema.users.id, id))
-      .groupBy(schema.users.id);
+    const user = await this.usersStore.getUserDetailsWithStats(id);
 
     if (!user) {
       throw new NotFoundException('User not found');
@@ -161,11 +61,7 @@ export class UsersAdminService {
       );
     }
 
-    const [user] = await this.db
-      .update(schema.users)
-      .set({ role: newRole as any, updatedAt: new Date() })
-      .where(eq(schema.users.id, targetUserId))
-      .returning();
+    const user = await this.usersStore.update(targetUserId, { role: newRole as any });
 
     if (!user) {
       throw new NotFoundException('User not found');
@@ -175,11 +71,7 @@ export class UsersAdminService {
   }
 
   async updateStatus(targetUserId: string, newStatus: string) {
-    const [user] = await this.db
-      .update(schema.users)
-      .set({ status: newStatus as any, updatedAt: new Date() })
-      .where(eq(schema.users.id, targetUserId))
-      .returning();
+    const user = await this.usersStore.update(targetUserId, { status: newStatus as any });
 
     if (!user) {
       throw new NotFoundException('User not found');
@@ -189,17 +81,9 @@ export class UsersAdminService {
   }
 
   async getUserOrders(userId: string) {
-    // Check if user exists
-    const [user] = await this.db
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(eq(schema.users.id, userId));
+    const user = await this.usersStore.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
-    return this.db
-      .select()
-      .from(schema.orders)
-      .where(eq(schema.orders.userId, userId))
-      .orderBy(desc(schema.orders.createdAt));
+    return this.usersStore.getUserOrders(userId);
   }
 }

@@ -16,7 +16,8 @@ import {
   Users,
   Tag,
   FolderTree,
-  Activity
+  Activity,
+  Coins
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ const sidebarLinks = [
   { name: "Orders", href: "/admin/orders", icon: ShoppingCart },
   { name: "Users", href: "/admin/users", icon: Users },
   { name: "Promos", href: "/admin/promos", icon: Tag },
+  { name: "Loyalty", href: "/admin/settings/loyalty", icon: Coins },
   { name: "System", href: "/admin/system", icon: Activity },
   { name: "My Account", href: "/dashboard/profile", icon: UserIcon },
 ];

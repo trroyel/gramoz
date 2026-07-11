@@ -64,6 +64,20 @@
       "when": 1782541312448,
       "tag": "0008_true_oracle",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783685665833,
+      "tag": "0009_sudden_alex_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783701065309,
+      "tag": "0010_milky_vector",
+      "breakpoints": true
     }
   ]
 }

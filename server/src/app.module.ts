@@ -18,6 +18,10 @@ import { StorageModule } from '@modules/storage/storage.module';
 import { RefundsModule } from '@modules/refunds/refunds.module';
 import { PromosModule } from './modules/promos/promos.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
+import { SettingsModule } from './modules/settings/settings.module';
+import { LoyaltyModule } from './modules/loyalty/loyalty.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
+import { WishlistsModule } from './modules/wishlists/wishlists.module';
 
 @Module({
   imports: [
@@ -46,6 +50,10 @@ import { AddressesModule } from './modules/addresses/addresses.module';
     RefundsModule,
     PromosModule,
     AddressesModule,
+    SettingsModule,
+    LoyaltyModule,
+    ReviewsModule,
+    WishlistsModule,
   ],
   controllers: [],
   providers: [

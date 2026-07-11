@@ -9,7 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { ConfigService } from '@config/config.service';
 import { RedisService } from '@cache/redis.service';
-import { UserRepository } from '@modules/users/user.repository';
+import { UsersStore } from '@modules/users/users.store';
 import { MailService } from './mail.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -22,7 +22,7 @@ import { GoogleProfile } from './strategies/google.strategy';
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly userRepository: UserRepository,
+    private readonly usersStore: UsersStore,
     private readonly jwtService: JwtService,
     private readonly redis: RedisService,
     private readonly mail: MailService,
@@ -31,7 +31,7 @@ export class AuthService {
 
   async register(dto: RegisterDto) {
     // Check if user exists
-    const existingUser = await this.userRepository.findByEmail(dto.email);
+    const existingUser = await this.usersStore.findByEmail(dto.email);
     if (existingUser) {
       throw new ConflictException('Email already registered');
     }
@@ -40,7 +40,7 @@ export class AuthService {
     const passwordHash = await argon2.hash(dto.password);
 
     // Create user
-    const user = await this.userRepository.create({
+    const user = await this.usersStore.create({
       email: dto.email,
       passwordHash,
       fullName: dto.fullName,
@@ -76,7 +76,7 @@ export class AuthService {
 
   async login(dto: LoginDto) {
     // Find user
-    const user = await this.userRepository.findByEmail(dto.email);
+    const user = await this.usersStore.findByEmail(dto.email);
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -106,7 +106,7 @@ export class AuthService {
     );
 
     // Update last login
-    await this.userRepository.update(user.id, { lastLoginAt: new Date() });
+    await this.usersStore.update(user.id, { lastLoginAt: new Date() });
 
     return {
       success: true,
@@ -160,13 +160,13 @@ export class AuthService {
     await this.redis.clearVerifyAttempts(dto.email);
 
     // Find user
-    const user = await this.userRepository.findByEmail(dto.email);
+    const user = await this.usersStore.findByEmail(dto.email);
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
     // Update user
-    await this.userRepository.update(user.id, { isEmailVerified: true });
+    await this.usersStore.update(user.id, { isEmailVerified: true });
 
     // Send welcome email
     await this.mail.sendWelcomeEmail(user.email, user.fullName);
@@ -180,7 +180,7 @@ export class AuthService {
 
   async resendVerification(email: string) {
     // Find user
-    const user = await this.userRepository.findByEmail(email);
+    const user = await this.usersStore.findByEmail(email);
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -210,7 +210,7 @@ export class AuthService {
 
   async forgotPassword(dto: ForgotPasswordDto) {
     // Find user
-    const user = await this.userRepository.findByEmail(dto.email);
+    const user = await this.usersStore.findByEmail(dto.email);
     if (!user) {
       // Don't reveal if user exists
       return {
@@ -251,7 +251,7 @@ export class AuthService {
     }
 
     // Find user
-    const user = await this.userRepository.findByEmail(dto.email);
+    const user = await this.usersStore.findByEmail(dto.email);
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -260,7 +260,7 @@ export class AuthService {
     const passwordHash = await argon2.hash(dto.newPassword);
 
     // Update password
-    await this.userRepository.update(user.id, { passwordHash });
+    await this.usersStore.update(user.id, { passwordHash });
 
     // Delete reset code
     await this.redis.deleteResetCode(dto.email);
@@ -306,28 +306,25 @@ export class AuthService {
     let user: User | undefined;
 
     // 1. Try to find by provider + providerId (most specific match)
-    user = await this.userRepository.findByProviderId(
-      'google',
-      profile.googleId,
-    );
+    user = await this.usersStore.findByProviderId('google', profile.googleId);
 
     // 2. Fall back to email match (user may have registered locally before)
     if (!user) {
-      user = await this.userRepository.findByEmail(profile.email);
+      user = await this.usersStore.findByEmail(profile.email);
       if (user) {
         // Link the Google account to the existing local account
-        await this.userRepository.update(user.id, {
+          await this.usersStore.update(user.id, {
           provider: 'google',
           providerId: profile.googleId,
           isEmailVerified: true,
         });
-        user = (await this.userRepository.findById(user.id)) as User;
+        user = (await this.usersStore.findById(user.id)) as User;
       }
     }
 
     // 3. Brand new user — create account
     if (!user) {
-      user = await this.userRepository.create({
+      user = await this.usersStore.create({
         email: profile.email,
         fullName: profile.fullName,
         passwordHash: null,
@@ -349,7 +346,7 @@ export class AuthService {
       refreshToken,
       this.config.jwtRefreshExpiresIn,
     );
-    await this.userRepository.update(user.id, { lastLoginAt: new Date() });
+    await this.usersStore.update(user.id, { lastLoginAt: new Date() });
 
     return { user, accessToken, refreshToken };
   }
@@ -387,7 +384,7 @@ export class AuthService {
       }
 
       // Find user
-      const user = await this.userRepository.findById(userId);
+      const user = await this.usersStore.findById(userId);
       if (!user || user.status !== 'active') {
         throw new UnauthorizedException('User inactive or not found');
       }

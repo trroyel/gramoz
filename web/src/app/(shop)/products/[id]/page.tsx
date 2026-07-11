@@ -5,6 +5,10 @@ import { ShoppingCart, CheckCircle, PackageX, ChevronRight, Home, ShieldCheck, T
 import Link from "next/link";
 import { AddToCartButton } from "./add-to-cart-button";
 import { getImageUrl } from "@/lib/utils";
+import { ReviewSection } from "@/components/reviews/review-section";
+import { reviewsApi } from "@/lib/api/reviews";
+import { Review } from "@/types";
+import { WishlistButton } from "@/components/ui/wishlist-button";
 
 export const revalidate = 60; // ISR: Revalidate every 60 seconds
 
@@ -39,10 +43,15 @@ export default async function ProductDetailPage({
   const resolvedParams = await params;
   
   let product;
+  let reviews: Review[] = [];
   try {
     const res = await productsApi.getById(resolvedParams.id);
     if (res.success) {
       product = res.data;
+    }
+    const reviewsRes = await reviewsApi.getProductReviews(resolvedParams.id);
+    if (reviewsRes.success) {
+      reviews = reviewsRes.data;
     }
   } catch (e) {
     console.error("Failed to fetch product", e);
@@ -133,7 +142,16 @@ export default async function ProductDetailPage({
               </div>
 
               {/* Client Component for Add to Cart interactivity */}
-              <AddToCartButton product={product} />
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <AddToCartButton product={product} />
+                </div>
+                <WishlistButton 
+                  productId={product.id} 
+                  variant="outline" 
+                  className="h-12 w-12 rounded-lg border-zinc-200 dark:border-zinc-800"
+                />
+              </div>
             </div>
 
             {/* Additional details */}
@@ -150,6 +168,9 @@ export default async function ProductDetailPage({
 
           </div>
         </div>
+        
+        {/* Reviews Section */}
+        <ReviewSection productId={product.id} initialReviews={reviews} />
       </div>
     </div>
   );

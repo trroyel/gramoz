@@ -47,3 +47,13 @@ export const paymentStatusEnum = pgEnum('payment_status', [
 ]);
 
 export const transactionTypeEnum = pgEnum('transaction_type', ['in', 'out']);
+
+export const reviewStatusEnum = pgEnum('review_status', ['pending', 'approved', 'rejected']);
+
+export const pointTransactionTypeEnum = pgEnum('point_transaction_type', [
+  'earned_review_text',
+  'earned_review_media',
+  'spent_checkout',
+  'expired',
+  'admin_adjustment'
+]);

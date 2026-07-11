@@ -3,12 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ShoppingBag, User, LogOut, Menu, ShoppingCart, LayoutDashboard, ChevronDown, Search, Package, X } from "lucide-react";
+import { ShoppingBag, User, LogOut, Menu, ShoppingCart, LayoutDashboard, ChevronDown, Search, Package, X, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useCartStore } from "@/stores/cart-store";
+import { useWishlistStore } from "@/stores/wishlist-store";
 import { PLATFORM_ROLES } from "@/types";
 
 export function Navbar() {
@@ -23,6 +24,8 @@ export function Navbar() {
   const { isAuthenticated, user, logout } = useAuthStore();
   const cartItems = useCartStore((state) => state.items);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const wishlistItems = useWishlistStore((state) => state.items);
+  const wishlistCount = wishlistItems.length;
   
   const isAdmin = user?.role && PLATFORM_ROLES.includes(user.role);
 
@@ -105,6 +108,20 @@ export function Navbar() {
           {/* Right Actions */}
           <div className="flex items-center gap-2">
             <ThemeToggle />
+
+            {/* Wishlist Button */}
+            {isAuthenticated && (
+              <Button variant="ghost" size="icon" className="relative" asChild>
+                <Link href="/dashboard/wishlist">
+                  <Heart className="h-5 w-5" />
+                  {isMounted && wishlistCount > 0 && (
+                    <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center">
+                      {wishlistCount > 9 ? "9+" : wishlistCount}
+                    </span>
+                  )}
+                </Link>
+              </Button>
+            )}
 
             {/* Cart Button */}
             <Button variant="ghost" size="icon" className="relative" asChild>

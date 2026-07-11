@@ -1,69 +1,44 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { EntityNotFoundError } from '../../common/errors/domain.errors';
-import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, and } from 'drizzle-orm';
 import * as schema from '@database/schema';
-import { DATABASE } from '@database/database.module';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
+import { AddressesStore } from './addresses.store';
 
 @Injectable()
 export class AddressesService {
-  constructor(
-    @Inject(DATABASE) private readonly db: NodePgDatabase<typeof schema>,
-  ) {}
+  constructor(private readonly addressesStore: AddressesStore) {}
 
   async create(userId: string, createAddressDto: CreateAddressDto): Promise<schema.Address> {
-    return await this.db.transaction(async (tx) => {
+    return await this.addressesStore.runTransaction(async (tx) => {
       // If setting as default, unset others first
       if (createAddressDto.isDefault) {
-        await tx
-          .update(schema.addresses)
-          .set({ isDefault: false })
-          .where(eq(schema.addresses.userId, userId))
-          .returning();
+        await this.addressesStore.unsetDefaultByUserId(userId, tx);
       }
 
       // If this is the user's first address, force it to be default
-      const existingAddresses = await tx
-        .select({ id: schema.addresses.id })
-        .from(schema.addresses)
-        .where(eq(schema.addresses.userId, userId))
-        .limit(1);
+      const hasAddresses = await this.addressesStore.checkHasAddresses(userId, tx);
 
-      const isFirstAddress = existingAddresses.length === 0;
-      const isDefault = isFirstAddress
+      const isDefault = !hasAddresses
         ? true
         : createAddressDto.isDefault || false;
 
-      const [newAddress] = await tx
-        .insert(schema.addresses)
-        .values({
-          ...createAddressDto,
-          userId,
-          isDefault,
-        })
-        .returning();
+      const newAddress = await this.addressesStore.createAddress({
+        ...createAddressDto,
+        userId,
+        isDefault,
+      }, tx);
 
       return newAddress;
     });
   }
 
   async findAll(userId: string): Promise<schema.Address[]> {
-    return await this.db
-      .select()
-      .from(schema.addresses)
-      .where(eq(schema.addresses.userId, userId))
-      .orderBy(schema.addresses.createdAt);
+    return await this.addressesStore.findAllByUserId(userId);
   }
 
   async findOne(id: string, userId: string): Promise<schema.Address> {
-    const [address] = await this.db
-      .select()
-      .from(schema.addresses)
-      .where(
-        and(eq(schema.addresses.id, id), eq(schema.addresses.userId, userId)),
-      );
+    const address = await this.addressesStore.findOneByIdAndUserId(id, userId);
 
     if (!address) {
       throw new EntityNotFoundError('Address not found');
@@ -75,25 +50,12 @@ export class AddressesService {
   async update(id: string, userId: string, updateAddressDto: UpdateAddressDto): Promise<schema.Address> {
     await this.findOne(id, userId); // Ensure it exists and belongs to user
 
-    return await this.db.transaction(async (tx) => {
+    return await this.addressesStore.runTransaction(async (tx) => {
       if (updateAddressDto.isDefault) {
-        await tx
-          .update(schema.addresses)
-          .set({ isDefault: false })
-          .where(eq(schema.addresses.userId, userId))
-          .returning();
+        await this.addressesStore.unsetDefaultByUserId(userId, tx);
       }
 
-      const [updatedAddress] = await tx
-        .update(schema.addresses)
-        .set({
-          ...updateAddressDto,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(eq(schema.addresses.id, id), eq(schema.addresses.userId, userId)),
-        )
-        .returning();
+      const updatedAddress = await this.addressesStore.updateAddress(id, userId, updateAddressDto, tx);
 
       return updatedAddress;
     });
@@ -102,28 +64,15 @@ export class AddressesService {
   async remove(id: string, userId: string): Promise<void> {
     const address = await this.findOne(id, userId);
 
-    await this.db.transaction(async (tx) => {
-      await tx
-        .delete(schema.addresses)
-        .where(
-          and(eq(schema.addresses.id, id), eq(schema.addresses.userId, userId)),
-        )
-        .returning();
+    await this.addressesStore.runTransaction(async (tx) => {
+      await this.addressesStore.removeAddress(id, userId, tx);
 
       // If the deleted address was default, make another one default if any exist
       if (address.isDefault) {
-        const [nextAddress] = await tx
-          .select({ id: schema.addresses.id })
-          .from(schema.addresses)
-          .where(eq(schema.addresses.userId, userId))
-          .limit(1);
+        const nextAddressId = await this.addressesStore.getFirstAddressIdByUserId(userId, tx);
 
-        if (nextAddress) {
-          await tx
-            .update(schema.addresses)
-            .set({ isDefault: true })
-            .where(eq(schema.addresses.id, nextAddress.id))
-            .returning();
+        if (nextAddressId) {
+          await this.addressesStore.setAddressAsDefault(nextAddressId, tx);
         }
       }
     });
@@ -132,20 +81,10 @@ export class AddressesService {
   async setDefault(id: string, userId: string): Promise<schema.Address> {
     await this.findOne(id, userId);
 
-    return await this.db.transaction(async (tx) => {
-      await tx
-        .update(schema.addresses)
-        .set({ isDefault: false })
-        .where(eq(schema.addresses.userId, userId))
-        .returning();
-
-      const [updatedAddress] = await tx
-        .update(schema.addresses)
-        .set({ isDefault: true, updatedAt: new Date() })
-        .where(
-          and(eq(schema.addresses.id, id), eq(schema.addresses.userId, userId)),
-        )
-        .returning();
+    return await this.addressesStore.runTransaction(async (tx) => {
+      await this.addressesStore.unsetDefaultByUserId(userId, tx);
+      
+      const updatedAddress = await this.addressesStore.setAddressAsDefault(id, tx);
 
       return updatedAddress;
     });

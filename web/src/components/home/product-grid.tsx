@@ -8,6 +8,7 @@ import { useCartStore } from "@/stores/cart-store";
 import { toast } from "sonner";
 import Link from "next/link";
 import { getImageUrl } from "@/lib/utils";
+import { WishlistButton } from "@/components/ui/wishlist-button";
 
 
 
@@ -98,6 +99,12 @@ export function ProductGrid({
                   />
                   <div className="absolute top-3 left-3 bg-white/90 dark:bg-black/80 backdrop-blur-sm px-2.5 py-1 text-xs font-semibold rounded-full shadow-sm text-zinc-800 dark:text-zinc-200">
                     New
+                  </div>
+                  <div className="absolute top-2 right-2 z-10" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                    <WishlistButton 
+                      productId={product.id} 
+                      className="bg-white/90 dark:bg-zinc-900/90 shadow-sm hover:bg-white dark:hover:bg-zinc-900 rounded-full h-9 w-9" 
+                    />
                   </div>
                 </div>
                 <CardContent className="p-5 flex-1">

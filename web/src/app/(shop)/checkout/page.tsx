@@ -11,7 +11,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, PlusCircle, MapPin, Loader2, CreditCard, Banknote } from "lucide-react";
+import { CheckCircle2, PlusCircle, MapPin, Loader2, CreditCard, Banknote, Coins } from "lucide-react";
+import { loyaltyApi } from "@/lib/api/loyalty";
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -26,6 +27,10 @@ export default function CheckoutPage() {
   const [newAddress, setNewAddress] = useState({ addressLine1: "", city: "", phone: "" });
 
   const [paymentMethod, setPaymentMethod] = useState<"sslcommerz" | "bkash" | "nagad" | "cod">("sslcommerz");
+
+  // ── Loyalty state ────────────────────────────────────────────────
+  const [loyaltyBalance, setLoyaltyBalance] = useState(0);
+  const [usePoints, setUsePoints] = useState(false);
 
   // ── Redirect empty cart ──────────────────────────────────────────
   useEffect(() => {
@@ -48,6 +53,11 @@ export default function CheckoutPage() {
       }
       setLoadingAddresses(false);
     });
+
+    // Fetch loyalty balance
+    loyaltyApi.getMyBalance().then((res) => {
+      setLoyaltyBalance(res.data.balance || 0);
+    }).catch(err => console.log("Failed to load loyalty balance", err));
   }, []);
 
   // ── Submit ───────────────────────────────────────────────────────
@@ -81,7 +91,7 @@ export default function CheckoutPage() {
 
     setIsProcessing(true);
     try {
-      const orderRes = await ordersApi.checkout({ addressLine1, city, phone, promoCode });
+      const orderRes = await ordersApi.checkout({ addressLine1, city, phone, promoCode, usePoints });
       if (!orderRes.success) throw new Error(orderRes.message || "Checkout failed");
 
       const orderId = orderRes.data?.id;
@@ -287,6 +297,33 @@ export default function CheckoutPage() {
         {/* ── RIGHT: Order Summary ── */}
         <div className="bg-zinc-50 dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl p-6">
           <h2 className="text-xl font-semibold mb-6">Order Summary</h2>
+          
+          {/* Loyalty Section */}
+          {loyaltyBalance > 0 && (
+            <div className="mb-6 bg-white dark:bg-zinc-800 border dark:border-zinc-700 p-4 rounded-xl flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-full flex items-center justify-center">
+                  <Coins className="w-5 h-5 text-yellow-600 dark:text-yellow-500" />
+                </div>
+                <div>
+                  <p className="font-semibold text-zinc-900 dark:text-zinc-100">Loyalty Rewards</p>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    You have <span className="font-bold text-yellow-600 dark:text-yellow-500">{loyaltyBalance} points</span>
+                  </p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  className="sr-only peer" 
+                  checked={usePoints}
+                  onChange={(e) => setUsePoints(e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-zinc-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+              </label>
+            </div>
+          )}
+
           <div className="space-y-4 mb-6 max-h-[300px] overflow-y-auto">
             {items.map((item) => (
               <div key={item.id} className="flex justify-between items-center text-sm">
@@ -302,8 +339,15 @@ export default function CheckoutPage() {
 
           {discountAmount > 0 && (
             <div className="flex justify-between items-center text-green-600 font-medium mb-2">
-              <span>Discount</span>
+              <span>Promo Discount</span>
               <span>-৳{discountAmount.toFixed(2)}</span>
+            </div>
+          )}
+
+          {usePoints && (
+            <div className="flex justify-between items-center text-yellow-600 font-medium mb-2">
+              <span>Loyalty Points Applied</span>
+              <span>Enabled</span>
             </div>
           )}
 

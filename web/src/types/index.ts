@@ -121,3 +121,43 @@ export interface CreateProductData {
   categoryId?: string;
   images?: File[];
 }
+
+export interface Wishlist {
+  id: string;
+  userId: string;
+  productId: string;
+  createdAt: string;
+  product?: Product;
+}
+
+export interface Review {
+  id: string;
+  userId: string;
+  productId: string;
+  orderId: string;
+  rating: number;
+  comment?: string;
+  images?: string[];
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  user?: {
+    fullName: string;
+  };
+}
+
+export interface LoyaltyPoint {
+  id: string;
+  userId: string;
+  points: number;
+  type: string;
+  referenceId?: string;
+  validUntil?: string;
+  createdAt: string;
+}
+
+export interface Setting {
+  key: string;
+  value: string;
+  description?: string;
+  updatedAt: string;
+}
