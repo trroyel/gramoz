@@ -95,4 +95,21 @@ export class ReviewsService {
     const offset = (Math.max(1, page) - 1) * limit;
     return this.reviewsStore.getProductReviews(productId, limit, offset);
   }
+
+  async getAllForAdmin(page = 1, limit = 20) {
+    const offset = (Math.max(1, page) - 1) * limit;
+    return this.reviewsStore.findAllForAdmin(limit, offset);
+  }
+
+  async updateReviewStatus(id: string, status: 'pending' | 'approved' | 'rejected') {
+    const review = await this.reviewsStore.updateStatus(id, status);
+    if (!review) throw new NotFoundException('Review not found');
+    return review;
+  }
+
+  async deleteReview(id: string) {
+    const review = await this.reviewsStore.deleteReview(id);
+    if (!review) throw new NotFoundException('Review not found');
+    return review;
+  }
 }

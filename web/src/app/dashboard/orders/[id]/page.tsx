@@ -9,6 +9,7 @@ import { Order } from "@/types";
 import { Loader2, ArrowLeft, Package, MapPin, Truck, CheckCircle2, XCircle, Clock, Banknote } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { ReviewFormModal } from "@/components/reviews/review-form-modal";
 
 export default function OrderDetailPage() {
   const { id } = useParams();
@@ -125,8 +126,17 @@ export default function OrderDetailPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="font-semibold whitespace-nowrap ml-4">
-                      ৳{(parseFloat(item.unitPrice) * item.quantity).toFixed(2)}
+                    <div className="flex flex-col items-end gap-2 ml-4">
+                      <div className="font-semibold whitespace-nowrap">
+                        ৳{(parseFloat(item.unitPrice) * item.quantity).toFixed(2)}
+                      </div>
+                      {order.status === 'delivered' && (
+                        <ReviewFormModal 
+                          productId={item.productId} 
+                          orderId={order.id} 
+                          productName={item.productName} 
+                        />
+                      )}
                     </div>
                   </div>
                 ))}

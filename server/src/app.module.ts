@@ -22,6 +22,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { WishlistsModule } from './modules/wishlists/wishlists.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { WishlistsModule } from './modules/wishlists/wishlists.module';
     LoyaltyModule,
     ReviewsModule,
     WishlistsModule,
+    NotificationsModule,
   ],
   controllers: [],
   providers: [

@@ -48,5 +48,23 @@ export const reviewsApi = {
   
   getProductReviews: (productId: string, page = 1) => {
     return httpClient.request<ApiResponse<Review[]>>(`/reviews/product/${productId}?page=${page}`);
+  },
+  
+  // Admin Methods
+  getAllAdminReviews: (page = 1) => {
+    return httpClient.request<ApiResponse<Review[]>>(`/admin/reviews?page=${page}`);
+  },
+
+  updateReviewStatus: (id: string, status: 'pending' | 'approved' | 'rejected') => {
+    return httpClient.request<ApiResponse<Review>>(`/admin/reviews/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  },
+
+  deleteReview: (id: string) => {
+    return httpClient.request<ApiResponse<void>>(`/admin/reviews/${id}`, {
+      method: 'DELETE',
+    });
   }
 };

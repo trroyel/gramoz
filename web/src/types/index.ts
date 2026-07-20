@@ -142,6 +142,10 @@ export interface Review {
   createdAt: string;
   user?: {
     fullName: string;
+    email?: string;
+  };
+  product?: {
+    name: string;
   };
 }
 

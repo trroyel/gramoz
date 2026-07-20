@@ -60,4 +60,42 @@ export class ReviewsStore {
       }
     });
   }
+
+  async findAllForAdmin(limit = 20, offset = 0) {
+    return this.db.query.reviews.findMany({
+      limit,
+      offset,
+      orderBy: (reviews, { desc }) => [desc(reviews.createdAt)],
+      with: {
+        user: {
+          columns: {
+            fullName: true,
+            email: true,
+          },
+        },
+        product: {
+          columns: {
+            name: true,
+          }
+        }
+      },
+    });
+  }
+
+  async updateStatus(id: string, status: 'pending' | 'approved' | 'rejected') {
+    const [review] = await this.db
+      .update(schema.reviews)
+      .set({ status })
+      .where(eq(schema.reviews.id, id))
+      .returning();
+    return review;
+  }
+
+  async deleteReview(id: string) {
+    const [review] = await this.db
+      .delete(schema.reviews)
+      .where(eq(schema.reviews.id, id))
+      .returning();
+    return review;
+  }
 }

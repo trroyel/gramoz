@@ -10,7 +10,7 @@ import * as argon2 from 'argon2';
 import { ConfigService } from '@config/config.service';
 import { RedisService } from '@cache/redis.service';
 import { UsersStore } from '@modules/users/users.store';
-import { MailService } from './mail.service';
+import { MailService } from '../notifications/mail.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';

@@ -5,7 +5,7 @@ import { eq, sql } from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
 import { CourierService } from '../courier/courier.service';
-import { MailService } from '../auth/mail.service';
+import { MailService } from '../notifications/mail.service';
 
 const MAX_ATTEMPTS = 3;
 
