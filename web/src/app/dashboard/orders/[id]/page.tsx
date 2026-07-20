@@ -10,6 +10,7 @@ import { Loader2, ArrowLeft, Package, MapPin, Truck, CheckCircle2, XCircle, Cloc
 import { toast } from "sonner";
 import Link from "next/link";
 import { ReviewFormModal } from "@/components/reviews/review-form-modal";
+import { RefundRequestModal } from "@/components/refunds/refund-request-modal";
 
 export default function OrderDetailPage() {
   const { id } = useParams();
@@ -194,6 +195,25 @@ export default function OrderDetailPage() {
                 </div>
             </CardContent>
           </Card>
+
+          {/* Refund Action Card */}
+          {['delivered', 'shipped'].includes(order.status) && (
+            <Card className="border-red-100 bg-red-50/30 dark:border-red-900/50 dark:bg-red-900/10">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-red-700 dark:text-red-400">Order Issue?</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+                  If there is an issue with your order (e.g. damaged or missing items), you can request a refund.
+                </p>
+                <RefundRequestModal 
+                  orderId={order.id} 
+                  orderTotal={parseFloat(order.totalAmount)}
+                />
+              </CardContent>
+            </Card>
+          )}
+
         </div>
       </div>
     </div>

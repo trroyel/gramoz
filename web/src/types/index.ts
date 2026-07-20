@@ -165,3 +165,18 @@ export interface Setting {
   description?: string;
   updatedAt: string;
 }
+
+export interface Refund {
+  id: string;
+  orderId: string;
+  amount: string | number;
+  reason: string;
+  status: 'requested' | 'approved' | 'processed' | 'rejected';
+  notes?: string;
+  adminNotes?: string;
+  gatewayRefundId?: string;
+  createdAt: string;
+  orderTotal?: string | number;
+  customerName?: string;
+  customerEmail?: string;
+}
