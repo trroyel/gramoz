@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Leaf, ShieldCheck, Truck, ShoppingBag, Store, Gift } from "lucide-react";
 import { ProductGrid } from "@/components/home/product-grid";
 import { productsApi } from "@/lib/api/products";
+import { settingsApi } from "@/lib/api/settings";
 import { Product } from "@/types";
+import { getImageUrl } from "@/lib/utils";
 
 const CATEGORIES = [
   { name: "Organic Food", icon: Leaf, color: "bg-green-100 dark:bg-green-900/30 text-green-600" },
@@ -21,15 +23,39 @@ const TRUST_BADGES = [
 
 export default async function Home() {
   let featuredProducts: Product[] = [];
+  let storefront: any = { hero: {}, promo: {} };
+  
   try {
-    const response = await productsApi.getAll({ sort: "newest" });
-    if (response.success) {
-      // Just take the first 4 for featured section
-      featuredProducts = response.data.slice(0, 4);
+    const [productsRes, storefrontRes] = await Promise.all([
+      productsApi.getAll({ sort: "newest" }),
+      settingsApi.getStorefront()
+    ]);
+    
+    if (productsRes.success) {
+      featuredProducts = productsRes.data.slice(0, 4);
+    }
+    if (storefrontRes.success) {
+      storefront = storefrontRes.data;
     }
   } catch {
     // silently fall back to empty
   }
+
+  const { hero, promo } = storefront;
+
+  // Fallbacks
+  const heroTagline = hero?.tagline || "Fresh Arrivals Every Week";
+  const heroTitle = hero?.title || "Authentic Rural Products, \nDelivered to You.";
+  const heroSubtitle = hero?.subtitle || "Discover high-quality, handcrafted, and organic goods sourced directly from the hardworking farmers and artisans of Bangladesh.";
+  const heroButtonText = hero?.buttonText || "Shop Now";
+  const heroButtonLink = hero?.buttonLink || "/products";
+  const heroImage = hero?.image ? getImageUrl(hero.image) : "/images/about/hero.png";
+
+  const promoTitle = promo?.title || "Get 15% Off Your First Order";
+  const promoSubtitle = promo?.subtitle || "Join Gramoz today and support rural empowerment while enjoying premium authentic products.";
+  const promoButtonText = promo?.buttonText || "View Offers";
+  const promoButtonLink = promo?.buttonLink || "/offers";
+  const promoImage = promo?.image ? getImageUrl(promo.image) : "/images/about/community.png";
 
   return (
     <div className="flex flex-col flex-1 bg-zinc-50 dark:bg-black font-sans">
@@ -40,8 +66,8 @@ export default async function Home() {
           {/* Background Image inside container */}
           <div className="absolute inset-0 z-0 bg-zinc-900">
             <Image 
-              src="/images/about/hero.png" 
-              alt="Gramoz Rural Empowerment" 
+              src={heroImage}
+              alt="Gramoz Hero Banner" 
               fill 
               sizes="(max-width: 1280px) 100vw, 1280px"
               className="object-cover"
@@ -53,23 +79,29 @@ export default async function Home() {
           {/* Content aligned to the left */}
           <div className="relative z-10 px-6 sm:px-10 md:px-16 w-full">
             <div className="max-w-2xl space-y-4 md:space-y-6 text-left">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/20 border border-green-500/30 text-green-300 text-xs md:text-sm font-medium backdrop-blur-md">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                </span>
-                Fresh Arrivals Every Week
-              </div>
-              <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-[1.1]">
-                Authentic Rural Products, <br className="hidden md:block"/>
-                <span className="text-green-400">Delivered to You.</span>
+              {heroTagline && (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/20 border border-green-500/30 text-green-300 text-xs md:text-sm font-medium backdrop-blur-md">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                  </span>
+                  {heroTagline}
+                </div>
+              )}
+              
+              <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-[1.1] whitespace-pre-line">
+                {heroTitle}
               </h1>
-              <p className="text-base md:text-lg text-zinc-200 max-w-xl">
-                Discover high-quality, handcrafted, and organic goods sourced directly from the hardworking farmers and artisans of Bangladesh.
-              </p>
+              
+              {heroSubtitle && (
+                <p className="text-base md:text-lg text-zinc-200 max-w-xl">
+                  {heroSubtitle}
+                </p>
+              )}
+              
               <div className="flex flex-col sm:flex-row items-center justify-start gap-3 md:gap-4 pt-2">
                 <Button asChild size="lg" className="bg-green-600 hover:bg-green-700 text-white h-10 md:h-12 px-6 md:px-8 text-base md:text-lg rounded-xl shadow-lg shadow-green-600/20 w-full sm:w-auto border-0">
-                  <Link href="/products">Shop Now</Link>
+                  <Link href={heroButtonLink}>{heroButtonText}</Link>
                 </Button>
                 <Button asChild variant="outline" size="lg" className="h-10 md:h-12 px-6 md:px-8 text-base md:text-lg rounded-xl border-2 border-white/30 text-white hover:bg-white/10 w-full sm:w-auto bg-black/20 backdrop-blur-sm">
                   <Link href="/about">Our Story</Link>
@@ -136,20 +168,22 @@ export default async function Home() {
           <div className="bg-green-900 rounded-3xl overflow-hidden relative shadow-2xl flex flex-col md:flex-row items-center">
             <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
             <div className="p-10 md:p-16 relative z-10 flex-1 space-y-6 text-center md:text-left">
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-white">
-                Get 15% Off Your First Order
+              <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-white whitespace-pre-line">
+                {promoTitle}
               </h2>
-              <p className="text-lg text-green-100 max-w-lg mx-auto md:mx-0">
-                Join Gramoz today and support rural empowerment while enjoying premium authentic products.
-              </p>
+              {promoSubtitle && (
+                <p className="text-lg text-green-100 max-w-lg mx-auto md:mx-0">
+                  {promoSubtitle}
+                </p>
+              )}
               <Button asChild size="lg" className="bg-white text-green-900 hover:bg-zinc-100 h-12 px-8 rounded-xl font-bold">
-                <Link href="/offers">View Offers</Link>
+                <Link href={promoButtonLink}>{promoButtonText}</Link>
               </Button>
             </div>
             <div className="hidden md:block relative w-1/3 min-h-[300px] h-full">
                <Image 
-                  src="/images/about/community.png" 
-                  alt="Gramoz Offers" 
+                  src={promoImage}
+                  alt="Gramoz Promo Banner" 
                   fill
                   sizes="33vw"
                   className="object-cover"

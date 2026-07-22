@@ -17,7 +17,10 @@ import {
   Tag,
   FolderTree,
   Activity,
-  Coins
+  Coins,
+  LayoutTemplate,
+  MessageSquare,
+  RefreshCcw
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
@@ -25,11 +28,14 @@ import { PLATFORM_ROLES } from "@/types";
 
 const sidebarLinks = [
   { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
+  { name: "Storefront CMS", href: "/admin/storefront", icon: LayoutTemplate },
   { name: "Products", href: "/admin/products", icon: Package },
   { name: "Categories", href: "/admin/categories", icon: FolderTree },
   { name: "Orders", href: "/admin/orders", icon: ShoppingCart },
   { name: "Users", href: "/admin/users", icon: Users },
   { name: "Promos", href: "/admin/promos", icon: Tag },
+  { name: "Reviews", href: "/admin/reviews", icon: MessageSquare },
+  { name: "Refunds", href: "/admin/refunds", icon: RefreshCcw },
   { name: "Loyalty", href: "/admin/settings/loyalty", icon: Coins },
   { name: "System", href: "/admin/system", icon: Activity },
   { name: "My Account", href: "/dashboard/profile", icon: UserIcon },

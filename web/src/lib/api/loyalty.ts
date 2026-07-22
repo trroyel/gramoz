@@ -5,7 +5,7 @@ const httpClient = new HttpClient();
 
 export const loyaltyApi = {
   getMyBalance: () => {
-    return httpClient.request<ApiResponse<{ balance: number }>>('/loyalty/balance', { method: 'GET' });
+    return httpClient.request<ApiResponse<{ balance: number; currencyValue: number; ratio: number }>>('/loyalty/balance', { method: 'GET' });
   },
   
   getMyHistory: (page = 1) => {

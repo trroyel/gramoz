@@ -18,8 +18,12 @@ export class FindProductsQueryDto {
   minPrice?: string;
 
   @IsOptional()
-  @IsNumberString()
+  @IsString()
   maxPrice?: string;
+
+  @IsOptional()
+  @IsString()
+  minRating?: string;
 
   @IsOptional()
   @IsIn(['price_asc', 'price_desc', 'newest'])

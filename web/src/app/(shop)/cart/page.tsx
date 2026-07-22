@@ -91,6 +91,11 @@ export default function CartPage() {
                         <Link href={`/products/${item.productId}`} className="font-semibold text-lg text-zinc-900 dark:text-zinc-100 hover:text-green-600 line-clamp-2">
                           {item.productName}
                         </Link>
+                        {item.variantAttributes && Object.keys(item.variantAttributes).length > 0 && (
+                          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+                            {Object.entries(item.variantAttributes).map(([k, v]) => `${v}`).join(' / ')}
+                          </p>
+                        )}
                         <p className="text-green-600 dark:text-green-500 font-bold mt-1">
                           ৳{item.productPrice}
                         </p>

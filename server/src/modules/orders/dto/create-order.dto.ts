@@ -16,4 +16,20 @@ export class CreateOrderDto {
 
   @IsOptional()
   usePoints?: boolean;
+
+  @IsString()
+  @IsOptional()
+  latitude?: string;
+
+  @IsString()
+  @IsOptional()
+  longitude?: string;
+
+  @IsString()
+  @IsOptional()
+  zoneId?: string;
+
+  @IsString()
+  @IsOptional()
+  deliveryMethod?: 'home' | 'branch';
 }

@@ -48,7 +48,10 @@ export class ReviewsStore {
 
   async getProductReviews(productId: string, limit = 10, offset = 0) {
     return this.db.query.reviews.findMany({
-      where: eq(schema.reviews.productId, productId),
+      where: and(
+        eq(schema.reviews.productId, productId),
+        eq(schema.reviews.status, 'approved'),
+      ),
       limit,
       offset,
       with: {

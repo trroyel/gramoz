@@ -35,8 +35,10 @@ export type ProductWithCategory = {
   status: string | null;
   categoryId: string | null;
   categoryName: string | null;
+  averageRating?: number;
   createdAt: Date | null;
   updatedAt: Date | null;
+  variants?: any[];
 };
 
 @Injectable()
@@ -67,11 +69,33 @@ export class ProductsService {
       images: imageUrl ? [{ url: imageUrl }] : [],
     };
 
-    const [product] = await this.db
-      .insert(schema.products)
-      .values(newProduct)
-      .returning();
-    return product;
+    return await this.db.transaction(async (tx) => {
+      const [product] = await tx
+        .insert(schema.products)
+        .values(newProduct)
+        .returning();
+
+      if (createProductDto.variants) {
+        try {
+          const variants = JSON.parse(createProductDto.variants);
+          if (Array.isArray(variants) && variants.length > 0) {
+            const variantInserts = variants.map((v: any) => ({
+              productId: product.id,
+              sku: v.sku,
+              price: v.price.toString(),
+              stock: Number(v.stock),
+              attributes: v.attributes,
+              imageUrl: v.imageUrl,
+            }));
+            await tx.insert(schema.productVariants).values(variantInserts);
+          }
+        } catch (e) {
+          // invalid json, ignore or handle
+        }
+      }
+
+      return product;
+    });
   }
 
   async findAll(query?: {
@@ -80,6 +104,7 @@ export class ProductsService {
     inStock?: string;
     minPrice?: string;
     maxPrice?: string;
+    minRating?: string;
     sort?: string;
     page?: string;
     limit?: string;
@@ -116,6 +141,9 @@ export class ProductsService {
     if (query?.maxPrice) {
       conditions.push(lte(schema.products.price, query.maxPrice));
     }
+    if (query?.minRating) {
+      conditions.push(sql`COALESCE((SELECT AVG(rating) FROM reviews WHERE product_id = ${schema.products.id} AND status = 'approved'), 0) >= ${query.minRating}`);
+    }
 
     // Pagination
     const page = Math.max(1, parseInt(query?.page ?? '1', 10));
@@ -147,6 +175,7 @@ export class ProductsService {
           status: schema.products.status,
           categoryId: schema.products.categoryId,
           categoryName: schema.categories.name,
+          averageRating: sql<number>`COALESCE((SELECT AVG(rating) FROM reviews WHERE product_id = ${schema.products.id} AND status = 'approved'), 0)::float`,
           createdAt: schema.products.createdAt,
           updatedAt: schema.products.updatedAt,
         })
@@ -203,6 +232,7 @@ export class ProductsService {
         status: schema.products.status,
         categoryId: schema.products.categoryId,
         categoryName: schema.categories.name,
+        averageRating: sql<number>`COALESCE((SELECT AVG(rating) FROM reviews WHERE product_id = ${schema.products.id} AND status = 'approved'), 0)::float`,
         createdAt: schema.products.createdAt,
         updatedAt: schema.products.updatedAt,
       })
@@ -219,11 +249,21 @@ export class ProductsService {
       );
 
     if (product) {
+      // Fetch variants
+      const variants = await this.db
+        .select()
+        .from(schema.productVariants)
+        .where(eq(schema.productVariants.productId, id))
+        .orderBy(schema.productVariants.createdAt);
+
+      const productWithVariants = { ...product, variants };
+
       // Cache for 5 minutes (300 seconds)
-      await this.redisService.set(cacheKey, JSON.stringify(product), 300);
+      await this.redisService.set(cacheKey, JSON.stringify(productWithVariants), 300);
+      return productWithVariants as any;
     }
     
-    return product;
+    return product as any;
   }
 
   async update(
@@ -242,11 +282,37 @@ export class ProductsService {
     if (imageUrl !== undefined)
       updateData.images = imageUrl ? [{ url: imageUrl }] : [];
 
-    const [product] = await this.db
-      .update(schema.products)
-      .set({ ...updateData, updatedAt: new Date() })
-      .where(eq(schema.products.id, id))
-      .returning();
+    const product = await this.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(schema.products)
+        .set({ ...updateData, updatedAt: new Date() })
+        .where(eq(schema.products.id, id))
+        .returning();
+
+      if (data.variants !== undefined) {
+        // Delete existing variants
+        await tx.delete(schema.productVariants).where(eq(schema.productVariants.productId, id));
+
+        try {
+          const variants = JSON.parse(data.variants);
+          if (Array.isArray(variants) && variants.length > 0) {
+            const variantInserts = variants.map((v: any) => ({
+              productId: id,
+              sku: v.sku,
+              price: v.price.toString(),
+              stock: Number(v.stock),
+              attributes: v.attributes,
+              imageUrl: v.imageUrl,
+            }));
+            await tx.insert(schema.productVariants).values(variantInserts);
+          }
+        } catch (e) {
+          // ignore or handle
+        }
+      }
+
+      return updated;
+    });
 
     // Invalidate the specific product cache
     await this.redisService.del(`product:${id}`);

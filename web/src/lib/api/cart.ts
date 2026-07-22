@@ -6,10 +6,10 @@ class CartApi extends HttpClient {
     return this.request<ApiResponse<Cart>>('/cart');
   }
 
-  async addItem(productId: string, quantity: number): Promise<ApiResponse<any>> {
+  async addItem(productId: string, quantity: number, variantId?: string): Promise<ApiResponse<any>> {
     return this.request<ApiResponse<any>>('/cart/items', {
       method: 'POST',
-      body: JSON.stringify({ productId, quantity }),
+      body: JSON.stringify({ productId, quantity, variantId }),
     });
   }
 

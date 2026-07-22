@@ -167,7 +167,23 @@ export default function AdminOrdersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-zinc-200 dark:border-zinc-800">
-              <h2 className="text-xl font-semibold">Order Details</h2>
+              <div className="flex items-center gap-4">
+                <h2 className="text-xl font-semibold">Order Details</h2>
+                {selectedOrder && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      const toastId = toast.loading("Generating packing slip...");
+                      ordersApi.downloadInvoice(selectedOrder.id, true)
+                        .then(() => toast.success("Packing slip downloaded!", { id: toastId }))
+                        .catch(() => toast.error("Failed to generate packing slip", { id: toastId }));
+                    }}
+                  >
+                    Download Packing Slip
+                  </Button>
+                )}
+              </div>
               <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
                 <X className="w-5 h-5" />
               </button>

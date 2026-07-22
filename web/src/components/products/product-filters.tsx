@@ -52,8 +52,9 @@ export function ProductFilters() {
   const activeSort = searchParams.get("sort") ?? "newest";
   const activeMin = searchParams.get("minPrice") ?? "";
   const activeMax = searchParams.get("maxPrice") ?? "";
+  const activeRating = searchParams.get("minRating") ?? "";
 
-  const hasFilters = activeCategory || activeSort !== "newest" || activeMin || activeMax;
+  const hasFilters = activeCategory || activeSort !== "newest" || activeMin || activeMax || activeRating;
 
   useEffect(() => {
     categoriesApi.getAll().then((res) => {
@@ -210,6 +211,33 @@ export function ProductFilters() {
             Apply
           </Button>
         </div>
+      </FilterSection>
+
+      {/* Rating Filter */}
+      <FilterSection title="Minimum Rating" defaultOpen={false}>
+        <ul className="space-y-1">
+          {[
+            { value: "4", label: "4 Stars & Up", icon: "⭐⭐⭐⭐" },
+            { value: "3", label: "3 Stars & Up", icon: "⭐⭐⭐" },
+            { value: "2", label: "2 Stars & Up", icon: "⭐⭐" },
+            { value: "1", label: "1 Star & Up", icon: "⭐" },
+          ].map((opt) => (
+            <li key={opt.value}>
+              <button
+                onClick={() => updateParam("minRating", searchParams.get("minRating") === opt.value ? null : opt.value)}
+                className={cn(
+                  "w-full text-left text-sm px-2 py-1.5 rounded-lg transition-colors flex justify-between items-center",
+                  searchParams.get("minRating") === opt.value
+                    ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400 font-medium"
+                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                )}
+              >
+                <span>{opt.label}</span>
+                <span className="text-xs">{opt.icon}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
       </FilterSection>
     </div>
   );

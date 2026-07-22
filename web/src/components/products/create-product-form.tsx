@@ -30,6 +30,14 @@ const getImageUrl = (urlOrObj?: string | { url?: string } | any) => {
   return safeUrl;
 };
 
+interface VariantState {
+  id: string; // temporary for UI
+  sku: string;
+  price: number;
+  stock: number;
+  attributes: { name: string; value: string }[];
+}
+
 export function CreateProductForm({ initialData }: ProductFormProps) {
   const router = useRouter();
   const isEditMode = !!initialData;
@@ -44,6 +52,21 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
     unit: initialData?.unit || "piece",
     categoryId: initialData?.categoryId || "",
   });
+  
+  const [variants, setVariants] = useState<VariantState[]>(
+    initialData?.variants?.map((v: any) => {
+      // transform { Color: "Red" } to [{ name: "Color", value: "Red" }]
+      const attrs = Object.entries(v.attributes || {}).map(([name, value]) => ({ name, value: String(value) }));
+      return {
+        id: v.id || crypto.randomUUID(),
+        sku: v.sku || "",
+        price: Number(v.price) || 0,
+        stock: v.stock || 0,
+        attributes: attrs,
+      };
+    }) || []
+  );
+
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(
     initialData?.images?.[0] ? getImageUrl(initialData.images[0]) : null
@@ -84,6 +107,47 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
     }
   };
 
+  const addVariant = () => {
+    setVariants([...variants, { id: crypto.randomUUID(), sku: "", price: 0, stock: 0, attributes: [] }]);
+  };
+
+  const removeVariant = (id: string) => {
+    setVariants(variants.filter((v) => v.id !== id));
+  };
+
+  const updateVariant = (id: string, field: string, value: string | number) => {
+    setVariants(variants.map((v) => (v.id === id ? { ...v, [field]: value } : v)));
+  };
+
+  const addAttribute = (variantId: string) => {
+    setVariants(variants.map((v) => {
+      if (v.id === variantId) {
+        return { ...v, attributes: [...v.attributes, { name: "", value: "" }] };
+      }
+      return v;
+    }));
+  };
+
+  const removeAttribute = (variantId: string, attrIndex: number) => {
+    setVariants(variants.map((v) => {
+      if (v.id === variantId) {
+        return { ...v, attributes: v.attributes.filter((_, i) => i !== attrIndex) };
+      }
+      return v;
+    }));
+  };
+
+  const updateAttribute = (variantId: string, attrIndex: number, field: 'name' | 'value', value: string) => {
+    setVariants(variants.map((v) => {
+      if (v.id === variantId) {
+        const newAttrs = [...v.attributes];
+        newAttrs[attrIndex] = { ...newAttrs[attrIndex], [field]: value };
+        return { ...v, attributes: newAttrs };
+      }
+      return v;
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -94,6 +158,18 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
 
     setIsLoading(true);
     try {
+      const variantsJson = variants.length > 0 
+        ? JSON.stringify(variants.map(v => ({
+            sku: v.sku,
+            price: v.price,
+            stock: v.stock,
+            attributes: v.attributes.reduce((acc, attr) => {
+              if (attr.name && attr.value) acc[attr.name] = attr.value;
+              return acc;
+            }, {} as Record<string, string>)
+          })))
+        : undefined;
+
       const dataToSubmit: CreateProductData = {
         name: formData.name,
         price: formData.price,
@@ -101,6 +177,7 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
         unit: formData.unit,
         categoryId: formData.categoryId,
         description: formData.description,
+        variants: variantsJson,
         images: imageFile ? [imageFile] : undefined,
       };
 
@@ -292,6 +369,113 @@ export function CreateProductForm({ initialData }: ProductFormProps) {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Variants Section */}
+          <div className="pt-6 border-t border-zinc-100 dark:border-zinc-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Product Variants</h3>
+                <p className="text-sm text-zinc-500">Add variations like size, color, or weight (optional).</p>
+              </div>
+              <Button type="button" variant="outline" onClick={addVariant} disabled={isLoading}>
+                Add Variant
+              </Button>
+            </div>
+
+            {variants.length > 0 && (
+              <div className="space-y-4">
+                {variants.map((variant, vIdx) => (
+                  <div key={variant.id} className="p-4 border rounded-xl space-y-4 relative bg-zinc-50 dark:bg-zinc-900/30">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute top-2 right-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                      onClick={() => removeVariant(variant.id)}
+                    >
+                      Remove
+                    </Button>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pr-20">
+                      <div className="space-y-2">
+                        <Label>SKU</Label>
+                        <Input
+                          placeholder="e.g. RED-M-01"
+                          value={variant.sku}
+                          onChange={(e) => updateVariant(variant.id, 'sku', e.target.value)}
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Price (৳) *</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={variant.price}
+                          onChange={(e) => updateVariant(variant.id, 'price', Number(e.target.value))}
+                          disabled={isLoading}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Stock *</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={variant.stock}
+                          onChange={(e) => updateVariant(variant.id, 'stock', Number(e.target.value))}
+                          disabled={isLoading}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label>Attributes</Label>
+                        <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={() => addAttribute(variant.id)}>
+                          + Add Attribute
+                        </Button>
+                      </div>
+                      {variant.attributes.map((attr, aIdx) => (
+                        <div key={aIdx} className="flex gap-2 items-start">
+                          <div className="flex-1">
+                            <Input
+                              placeholder="Name (e.g. Color)"
+                              value={attr.name}
+                              onChange={(e) => updateAttribute(variant.id, aIdx, 'name', e.target.value)}
+                              disabled={isLoading}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <Input
+                              placeholder="Value (e.g. Red)"
+                              value={attr.value}
+                              onChange={(e) => updateAttribute(variant.id, aIdx, 'value', e.target.value)}
+                              disabled={isLoading}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-zinc-400 hover:text-red-500"
+                            onClick={() => removeAttribute(variant.id, aIdx)}
+                          >
+                            ×
+                          </Button>
+                        </div>
+                      ))}
+                      {variant.attributes.length === 0 && (
+                        <div className="text-xs text-zinc-500 italic">No attributes added yet.</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-4 pt-6 border-t border-zinc-100 dark:border-zinc-800">

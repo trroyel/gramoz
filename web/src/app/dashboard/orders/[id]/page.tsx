@@ -83,20 +83,33 @@ export default function OrderDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="icon" asChild>
-          <Link href="/dashboard/orders">
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Order Details
-          </h1>
-          <p className="text-zinc-600 dark:text-zinc-400 text-sm">
-            #{order.id} • Placed on {new Date(order.createdAt).toLocaleDateString()}
-          </p>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" size="icon" asChild>
+            <Link href="/dashboard/orders">
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+              Order Details
+            </h1>
+            <p className="text-zinc-600 dark:text-zinc-400 text-sm">
+              #{order.id} • Placed on {new Date(order.createdAt).toLocaleDateString()}
+            </p>
+          </div>
         </div>
+        <Button 
+          variant="outline"
+          onClick={() => {
+            const toastId = toast.loading("Generating invoice...");
+            ordersApi.downloadInvoice(order.id)
+              .then(() => toast.success("Invoice downloaded!", { id: toastId }))
+              .catch(() => toast.error("Failed to generate invoice", { id: toastId }));
+          }}
+        >
+          Download Invoice
+        </Button>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -195,7 +208,27 @@ export default function OrderDetailPage() {
                 </div>
             </CardContent>
           </Card>
-
+          {/* Tracking Info Card */}
+          {order.consignmentId && (
+            <Card className="border-blue-100 bg-blue-50/30 dark:border-blue-900/50 dark:bg-blue-900/10">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-blue-700 dark:text-blue-400 flex items-center gap-2">
+                  <Truck className="w-5 h-5" />
+                  Track Package
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+                  Your order has been shipped! Tracking Code: <span className="font-mono font-medium text-zinc-900 dark:text-zinc-100">{order.consignmentId}</span>
+                </p>
+                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" asChild>
+                  <Link href={`/track?code=${order.consignmentId}`}>
+                    Track Order
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
           {/* Refund Action Card */}
           {['delivered', 'shipped'].includes(order.status) && (
             <Card className="border-red-100 bg-red-50/30 dark:border-red-900/50 dark:bg-red-900/10">

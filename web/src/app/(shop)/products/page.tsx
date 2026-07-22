@@ -77,7 +77,7 @@ export default async function PublicProductsPage({
             {activeCategory ? activeCategory.name : searchQuery ? `Results for "${searchQuery}"` : "All Products"}
           </h1>
           {/* Active filter chips */}
-          {(activeCategory || sortLabel || queryParams.minPrice || queryParams.maxPrice) && (
+          {(activeCategory || sortLabel || queryParams.minPrice || queryParams.maxPrice || queryParams.minRating) && (
             <div className="flex flex-wrap gap-2 mt-3">
               {activeCategory && (
                 <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs px-2.5 py-1 rounded-full font-medium">
@@ -92,6 +92,11 @@ export default async function PublicProductsPage({
               {(queryParams.minPrice || queryParams.maxPrice) && (
                 <span className="inline-flex items-center gap-1 bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 text-xs px-2.5 py-1 rounded-full font-medium">
                   ৳{queryParams.minPrice || "0"} – ৳{queryParams.maxPrice || "∞"}
+                </span>
+              )}
+              {queryParams.minRating && (
+                <span className="inline-flex items-center gap-1 bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 text-xs px-2.5 py-1 rounded-full font-medium">
+                  {queryParams.minRating} Stars & Up
                 </span>
               )}
             </div>

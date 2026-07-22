@@ -43,6 +43,17 @@ export interface Category {
   createdAt: string;
 }
 
+export interface ProductVariant {
+  id: string;
+  productId: string;
+  sku?: string;
+  price: string | number;
+  stock: number;
+  attributes: Record<string, string>;
+  imageUrl?: string;
+  createdAt?: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -54,8 +65,10 @@ export interface Product {
   images: string[];
   categoryId: string;
   categoryName?: string;
+  averageRating?: number;
   status: string;
   createdAt: string;
+  variants?: ProductVariant[];
 }
 
 export interface CartItem {
@@ -67,6 +80,8 @@ export interface CartItem {
   productImages: string[];
   productStock: number;
   productStatus: string;
+  variantId?: string;
+  variantAttributes?: Record<string, string>;
 }
 
 export interface Cart {
@@ -86,6 +101,8 @@ export interface Address {
   state?: string;
   zipCode?: string;
   country?: string;
+  latitude?: string;
+  longitude?: string;
   isDefault: boolean;
 }
 
@@ -95,6 +112,8 @@ export interface OrderItem {
   unitPrice: string;
   productName: string;
   productId: string;
+  variantId?: string;
+  variantAttributes?: Record<string, string>;
 }
 
 export interface Order {
@@ -102,7 +121,7 @@ export interface Order {
   userId: string;
   shippingAddressId: string;
   totalAmount: string;
-  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
   payment?: {
     status: 'pending' | 'completed' | 'failed' | 'refunded';
     method: string;
@@ -110,6 +129,10 @@ export interface Order {
   } | null;
   createdAt: string;
   items?: OrderItem[];
+  consignmentId?: string;
+  trackingUrl?: string;
+  user?: Partial<User>;
+  customerName?: string;
 }
 
 export interface CreateProductData {
@@ -120,6 +143,7 @@ export interface CreateProductData {
   unit?: string;
   categoryId?: string;
   images?: File[];
+  variants?: string; // JSON stringified array of variant data
 }
 
 export interface Wishlist {

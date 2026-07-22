@@ -3,3 +3,4 @@ export * from './password-reset.template';
 export * from './welcome-email.template';
 export * from './order-confirmation.template';
 export * from './low-stock-alert.template';
+export * from './abandoned-cart.template';

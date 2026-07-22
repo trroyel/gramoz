@@ -1,5 +1,6 @@
 import {
   boolean,
+  decimal,
   pgTable,
   timestamp,
   uuid,
@@ -19,6 +20,9 @@ export const addresses = pgTable('addresses', {
   addressLine2: varchar('address_line_2', { length: 255 }),
   city: varchar({ length: 100 }).notNull(),
   zipCode: varchar('zip_code', { length: 20 }),
+
+  latitude: decimal('latitude', { precision: 10, scale: 7 }),
+  longitude: decimal('longitude', { precision: 10, scale: 7 }),
 
   isDefault: boolean('is_default').notNull().default(false),
 

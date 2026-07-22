@@ -7,6 +7,7 @@ import {
   welcomeEmailTemplate,
   orderConfirmationTemplate,
   lowStockAlertTemplate,
+  abandonedCartTemplate,
 } from './templates';
 
 @Injectable()
@@ -105,6 +106,31 @@ export class MailService {
       });
     } catch (error) {
       this.logger.error('Failed to send low-stock alert:', error);
+    }
+  }
+
+  async sendAbandonedCartEmail(
+    email: string,
+    fullName: string,
+    items: Array<{
+      productName: string;
+      quantity: number;
+      unitPrice: string;
+    }>,
+  ): Promise<void> {
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+    try {
+      await this.resend.emails.send({
+        from: this.config.emailFrom,
+        to: email,
+        subject: 'You left something behind! - Gramoz',
+        html: abandonedCartTemplate(fullName, items, frontendUrl),
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to send abandoned cart email to ${email}:`,
+        error,
+      );
     }
   }
 }

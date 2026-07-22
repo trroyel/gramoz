@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { EntityNotFoundError, InvalidOperationError, ForbiddenOperationError } from '../../common/errors/domain.errors';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, sql } from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
 
@@ -177,11 +177,37 @@ export class RefundsService {
             .where(eq(schema.payments.id, refund.paymentId));
         }
 
-        // Always mark the order's payment status as refunded
+        // Always mark the order's payment status as refunded, and main status as refunded
         await tx
           .update(schema.orders)
-          .set({ paymentStatus: 'refunded', updatedAt: new Date() })
+          .set({ paymentStatus: 'refunded', status: 'refunded' as any, updatedAt: new Date() })
           .where(eq(schema.orders.id, refund.orderId));
+
+        // Fetch order items to restock
+        const items = await tx
+          .select()
+          .from(schema.orderItems)
+          .where(eq(schema.orderItems.orderId, refund.orderId));
+
+        for (const item of items) {
+          if (item.variantId) {
+            await tx.execute(
+              sql`UPDATE ${schema.productVariants} SET stock = stock + ${item.quantity} WHERE id = ${item.variantId}`
+            );
+          } else {
+            await tx.execute(
+              sql`UPDATE ${schema.products} SET stock = stock + ${item.quantity} WHERE id = ${item.productId}`
+            );
+          }
+
+          await tx.insert(schema.inventoryTransactions).values({
+            productId: item.productId,
+            type: 'in',
+            quantity: item.quantity,
+            referenceId: refundId,
+            notes: 'Refund processed',
+          });
+        }
       }
 
       return updated;

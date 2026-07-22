@@ -3,11 +3,9 @@
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Package, ShoppingCart, TrendingUp, Loader2, Tag } from "lucide-react";
-import { ordersApi } from "@/lib/api/orders";
-import { productsApi } from "@/lib/api/products";
-import { promosApi, Promo } from "@/lib/api/promos";
-import Link from "next/link";
+import { DollarSign, Package, ShoppingCart, Loader2, AlertTriangle } from "lucide-react";
+import { analyticsApi } from "@/lib/api/analytics";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
@@ -18,53 +16,17 @@ export default function DashboardPage() {
     totalOrders: 0,
     totalProducts: 0,
     recentOrders: [] as any[],
-    activePromos: [] as Promo[],
+    lowStockProducts: [] as any[],
+    dailyRevenue: [] as any[],
   });
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        const [ordersRes, productsRes, promosData] = await Promise.all([
-          ordersApi.getAllAsAdmin(),
-          productsApi.getAll(),
-          promosApi.getAllPromos().catch(() => []),
-        ]);
-
-        let revenue = 0;
-        let ordersCount = 0;
-        let recent = [];
-
-        if (ordersRes.success && ordersRes.data) {
-          const orders = ordersRes.data;
-          ordersCount = orders.length;
-          
-          revenue = orders.reduce((sum, order) => {
-            if (order.status !== 'cancelled') {
-              return sum + parseFloat(order.totalAmount);
-            }
-            return sum;
-          }, 0);
-
-          recent = orders.slice(0, 5); // top 5 recent orders
+        const res = await analyticsApi.getDashboardStats();
+        if (res.success && res.data) {
+          setStats(res.data);
         }
-
-        let productsCount = 0;
-        if (productsRes.success && productsRes.data) {
-          productsCount = productsRes.data.length;
-        }
-
-        let activePromosList = Array.isArray(promosData) 
-          ? promosData.filter(p => p.isActive).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 3) 
-          : [];
-
-        setStats({
-          totalRevenue: revenue,
-          totalOrders: ordersCount,
-          totalProducts: productsCount,
-          recentOrders: recent,
-          activePromos: activePromosList,
-        });
-
       } catch (error) {
         console.error("Failed to load dashboard data", error);
       } finally {
@@ -85,24 +47,24 @@ export default function DashboardPage() {
     },
     {
       title: "Total Orders",
-      value: stats.totalOrders.toString(),
+      value: stats.totalOrders.toLocaleString(),
       icon: ShoppingCart,
       color: "text-blue-600 dark:text-blue-500",
       bg: "bg-blue-100 dark:bg-blue-900/20",
     },
     {
       title: "Total Products",
-      value: stats.totalProducts.toString(),
+      value: stats.totalProducts.toLocaleString(),
       icon: Package,
       color: "text-orange-600 dark:text-orange-500",
       bg: "bg-orange-100 dark:bg-orange-900/20",
     },
     {
-      title: "Active Views",
-      value: "1,234",
-      icon: TrendingUp,
-      color: "text-purple-600 dark:text-purple-500",
-      bg: "bg-purple-100 dark:bg-purple-900/20",
+      title: "Low Stock Items",
+      value: stats.lowStockProducts.length.toString(),
+      icon: AlertTriangle,
+      color: stats.lowStockProducts.length > 0 ? "text-red-600 dark:text-red-500" : "text-zinc-600 dark:text-zinc-500",
+      bg: stats.lowStockProducts.length > 0 ? "bg-red-100 dark:bg-red-900/20" : "bg-zinc-100 dark:bg-zinc-900/20",
     },
   ];
 
@@ -146,6 +108,57 @@ export default function DashboardPage() {
         })}
       </div>
 
+      {/* Revenue Chart */}
+      <Card className="border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle>Revenue (Last 30 Days)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[300px] w-full">
+            {stats.dailyRevenue.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={stats.dailyRevenue} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#16a34a" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#16a34a" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis 
+                    dataKey="date" 
+                    tickFormatter={(date) => {
+                      const d = new Date(date);
+                      return `${d.getDate()} ${d.toLocaleString('default', { month: 'short' })}`;
+                    }}
+                    stroke="#888888" 
+                    fontSize={12} 
+                    tickLine={false} 
+                    axisLine={false} 
+                  />
+                  <YAxis 
+                    stroke="#888888" 
+                    fontSize={12} 
+                    tickLine={false} 
+                    axisLine={false} 
+                    tickFormatter={(value) => `৳${value}`}
+                  />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <Tooltip 
+                    formatter={(value: any) => [`৳${Number(value).toLocaleString()}`, "Revenue"]}
+                    labelFormatter={(label) => new Date(label as string).toLocaleDateString()}
+                  />
+                  <Area type="monotone" dataKey="revenue" stroke="#16a34a" fillOpacity={1} fill="url(#colorRevenue)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-zinc-500">
+                No revenue data for this period
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid lg:grid-cols-3 gap-6">
         <Card className="col-span-2 border-0 shadow-sm">
           <CardHeader>
@@ -171,7 +184,7 @@ export default function DashboardPage() {
                   ) : (
                     stats.recentOrders.map((order) => (
                       <tr key={order.id}>
-                        <td className="py-4 pr-4 font-medium">{order.id}</td>
+                        <td className="py-4 pr-4 font-medium font-mono text-xs">{order.id}</td>
                         <td className="py-4 pr-4">{order.customerName || 'Unknown'}</td>
                         <td className="py-4 pr-4 text-zinc-500">{new Date(order.createdAt).toLocaleDateString()}</td>
                         <td className="py-4 pr-4">
@@ -195,44 +208,36 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="col-span-1 border-0 shadow-sm flex flex-col p-6 bg-gradient-to-br from-green-500 to-green-700 text-white relative overflow-hidden">
+        {/* Low Stock Warning Card */}
+        <Card className="col-span-1 border-0 shadow-sm flex flex-col p-6 bg-gradient-to-br from-red-500 to-red-700 text-white relative overflow-hidden">
           <div className="absolute top-0 right-0 p-6 opacity-10">
-            <Tag className="w-32 h-32" />
+            <AlertTriangle className="w-32 h-32" />
           </div>
           <div className="relative z-10 w-full flex-1 flex flex-col">
             <div className="flex items-center gap-2 mb-6">
-              <Tag className="w-5 h-5" />
-              <h3 className="text-xl font-bold">Active Promos</h3>
+              <AlertTriangle className="w-5 h-5" />
+              <h3 className="text-xl font-bold">Low Stock Alerts</h3>
             </div>
             
             <div className="flex-1 space-y-4">
-              {stats.activePromos.length === 0 ? (
-                <div className="text-green-100 text-sm text-center py-8">
-                  No active promos at the moment.
+              {stats.lowStockProducts.length === 0 ? (
+                <div className="text-red-100 text-sm text-center py-8">
+                  All products are fully stocked!
                 </div>
               ) : (
-                stats.activePromos.map(promo => (
-                  <div key={promo.id} className="bg-white/10 rounded-lg p-3 backdrop-blur-sm border border-white/20 flex justify-between items-center">
+                stats.lowStockProducts.map(product => (
+                  <div key={product.id} className="bg-white/10 rounded-lg p-3 backdrop-blur-sm border border-white/20 flex justify-between items-center">
                     <div>
-                      <div className="font-mono font-bold tracking-wider">{promo.code}</div>
-                      <div className="text-xs text-green-100 mt-1">
-                        {promo.discountType === 'percentage' ? `${promo.discountValue}% OFF` : `৳${promo.discountValue} OFF`}
-                      </div>
+                      <div className="font-medium truncate max-w-[150px]">{product.name}</div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold">{promo.currentUses}</div>
-                      <div className="text-[10px] text-green-100 uppercase tracking-wide">Uses</div>
+                    <div className="text-right flex items-center gap-2">
+                      <div className="text-lg font-bold">{product.stock}</div>
+                      <div className="text-[10px] text-red-100 uppercase tracking-wide">Left</div>
                     </div>
                   </div>
                 ))
               )}
             </div>
-
-            <Link href="/admin/promos" className="mt-6">
-              <button className="bg-white text-green-700 px-6 py-2.5 rounded-lg font-semibold text-sm w-full shadow-lg hover:bg-green-50 transition-colors">
-                Manage Promos
-              </button>
-            </Link>
           </div>
         </Card>
       </div>

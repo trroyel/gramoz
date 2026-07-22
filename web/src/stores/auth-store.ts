@@ -13,11 +13,13 @@ import { authApi } from '@/lib/api/auth';
  * This store only tracks:
  *   - user profile (for UI display)
  *   - isAuthenticated flag (for route guards)
+ *   - _hasHydrated flag to know when rehydration from localStorage is done
  */
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  _hasHydrated: boolean;
 
   // Actions
   setAuth: (user: User) => void;
@@ -25,6 +27,7 @@ interface AuthState {
   logout: () => Promise<void>;  // calls server logout THEN clears state (used by logout button)
   setUser: (user: User) => void;
   setLoading: (loading: boolean) => void;
+  setHasHydrated: (state: boolean) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -33,6 +36,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isAuthenticated: false,
       isLoading: false,
+      _hasHydrated: false,
 
       setAuth: (user) => {
         // Cookie is set by the server — nothing to do client-side for the token
@@ -58,6 +62,8 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => set({ user }),
 
       setLoading: (loading) => set({ isLoading: loading }),
+
+      setHasHydrated: (state) => set({ _hasHydrated: state }),
     }),
     {
       name: 'auth-storage',
@@ -65,6 +71,11 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        // Called after localStorage has been read and state has been merged.
+        // Flip the flag so auth guards know the real user value is now available.
+        state?.setHasHydrated(true);
+      },
     },
   ),
 );

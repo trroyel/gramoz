@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
 
@@ -22,11 +22,20 @@ export class CartStore {
         productImages: schema.products.images,
         productStock: schema.products.stock,
         productStatus: schema.products.status,
+        variantId: schema.cartItems.variantId,
+        variantAttributes: schema.productVariants.attributes,
+        variantPrice: schema.productVariants.price,
+        variantStock: schema.productVariants.stock,
+        variantImage: schema.productVariants.imageUrl,
       })
       .from(schema.cartItems)
       .leftJoin(
         schema.products,
         eq(schema.cartItems.productId, schema.products.id),
+      )
+      .leftJoin(
+        schema.productVariants,
+        eq(schema.cartItems.variantId, schema.productVariants.id),
       )
       .where(eq(schema.cartItems.userId, userId));
   }
@@ -40,17 +49,29 @@ export class CartStore {
     return product || null;
   }
 
-  async findCartItemByProduct(userId: string, productId: string, tx?: any): Promise<schema.CartItem | null> {
+  async getVariantById(variantId: string, tx?: any): Promise<schema.ProductVariant | null> {
     const executor = tx || this.db;
+    const [variant] = await executor
+      .select()
+      .from(schema.productVariants)
+      .where(eq(schema.productVariants.id, variantId));
+    return variant || null;
+  }
+
+  async findCartItemByProduct(userId: string, productId: string, variantId?: string, tx?: any): Promise<schema.CartItem | null> {
+    const executor = tx || this.db;
+    
+    // If variantId is provided, match exactly. If null/undefined, match where variantId is null
+    const condition = and(
+      eq(schema.cartItems.userId, userId),
+      eq(schema.cartItems.productId, productId),
+      variantId ? eq(schema.cartItems.variantId, variantId) : isNull(schema.cartItems.variantId)
+    );
+
     const [existing] = await executor
       .select()
       .from(schema.cartItems)
-      .where(
-        and(
-          eq(schema.cartItems.userId, userId),
-          eq(schema.cartItems.productId, productId),
-        ),
-      );
+      .where(condition);
     return existing || null;
   }
 
@@ -72,7 +93,7 @@ export class CartStore {
     const executor = tx || this.db;
     const [updated] = await executor
       .update(schema.cartItems)
-      .set({ quantity, updatedAt: new Date() })
+      .set({ quantity, abandonedEmailSent: false, updatedAt: new Date() })
       .where(eq(schema.cartItems.id, cartItemId))
       .returning();
     return updated;

@@ -14,6 +14,16 @@ import {
   useDeleteAddress, 
   useSetDefaultAddress 
 } from "@/hooks/queries/use-addresses";
+import dynamic from "next/dynamic";
+
+const LocationPicker = dynamic(() => import("@/components/addresses/location-picker"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[250px] bg-zinc-100 dark:bg-zinc-800 animate-pulse rounded-xl flex items-center justify-center">
+      <span className="text-zinc-400">Loading Map...</span>
+    </div>
+  ),
+});
 
 export default function AddressesPage() {
   const { data: addresses = [], isLoading } = useAddresses();
@@ -31,6 +41,8 @@ export default function AddressesPage() {
     addressLine2: "",
     city: "",
     zipCode: "",
+    latitude: "",
+    longitude: "",
     isDefault: false,
   });
 
@@ -56,6 +68,8 @@ export default function AddressesPage() {
       addressLine2: "",
       city: "",
       zipCode: "",
+      latitude: "",
+      longitude: "",
       isDefault: false,
     });
   };
@@ -77,6 +91,8 @@ export default function AddressesPage() {
       addressLine2: address.addressLine2 || "",
       city: address.city || "",
       zipCode: address.zipCode || "",
+      latitude: address.latitude || "",
+      longitude: address.longitude || "",
       isDefault: address.isDefault || false,
     });
     setIsModalOpen(true);
@@ -90,6 +106,8 @@ export default function AddressesPage() {
       addressLine2: "",
       city: "",
       zipCode: "",
+      latitude: "",
+      longitude: "",
       isDefault: false,
     });
     setIsModalOpen(true);
@@ -229,6 +247,10 @@ export default function AddressesPage() {
             
             <div className="p-6 overflow-y-auto max-h-[70vh]">
               <form onSubmit={handleCreateAddress} className="space-y-4">
+                <LocationPicker 
+                  initialPosition={formData.latitude && formData.longitude ? [parseFloat(formData.latitude), parseFloat(formData.longitude)] : undefined}
+                  onLocationSelect={(lat, lng) => setFormData({ ...formData, latitude: String(lat), longitude: String(lng) })} 
+                />
                 <div className="space-y-2">
                   <Label htmlFor="title">Address Title (e.g., Home, Office)</Label>
                   <Input 

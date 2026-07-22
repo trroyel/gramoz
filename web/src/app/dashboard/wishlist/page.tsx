@@ -40,8 +40,11 @@ export default function WishlistPage() {
     setWishlists((prev) => prev.filter(w => w.productId !== productId));
   };
 
-  const handleAddToCart = (productId: string) => {
+  const handleAddToCart = async (productId: string) => {
     addItem(productId, 1);
+    // Remove from wishlist after adding to cart (save-for-later → acting on it)
+    await toggleItem(productId);
+    setWishlists((prev) => prev.filter(w => w.productId !== productId));
   };
 
   if (loading) {

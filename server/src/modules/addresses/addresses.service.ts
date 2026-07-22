@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityNotFoundError } from '../../common/errors/domain.errors';
+import { EntityNotFoundError, InvalidOperationError } from '../../common/errors/domain.errors';
 import * as schema from '@database/schema';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
@@ -64,18 +64,25 @@ export class AddressesService {
   async remove(id: string, userId: string): Promise<void> {
     const address = await this.findOne(id, userId);
 
-    await this.addressesStore.runTransaction(async (tx) => {
-      await this.addressesStore.removeAddress(id, userId, tx);
+    try {
+      await this.addressesStore.runTransaction(async (tx) => {
+        await this.addressesStore.removeAddress(id, userId, tx);
 
-      // If the deleted address was default, make another one default if any exist
-      if (address.isDefault) {
-        const nextAddressId = await this.addressesStore.getFirstAddressIdByUserId(userId, tx);
+        // If the deleted address was default, make another one default if any exist
+        if (address.isDefault) {
+          const nextAddressId = await this.addressesStore.getFirstAddressIdByUserId(userId, tx);
 
-        if (nextAddressId) {
-          await this.addressesStore.setAddressAsDefault(nextAddressId, tx);
+          if (nextAddressId) {
+            await this.addressesStore.setAddressAsDefault(nextAddressId, tx);
+          }
         }
+      });
+    } catch (error: any) {
+      if (error.code === '23503' || error.message?.includes('foreign key constraint')) {
+        throw new InvalidOperationError('Cannot delete this address because it is associated with past orders.');
       }
-    });
+      throw error;
+    }
   }
 
   async setDefault(id: string, userId: string): Promise<schema.Address> {

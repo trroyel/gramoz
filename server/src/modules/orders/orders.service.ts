@@ -7,6 +7,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { PromosService } from '../promos/promos.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { SettingsService } from '../settings/settings.service';
+import { CourierService } from '../courier/courier.service';
 import { OrdersStore } from './orders.store';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class OrdersService {
     private readonly promosService: PromosService,
     private readonly loyaltyService: LoyaltyService,
     private readonly settingsService: SettingsService,
+    private readonly courierService: CourierService,
   ) {}
 
   async createOrderFromCart(userId: string, dto: CreateOrderDto): Promise<schema.Order> {
@@ -26,17 +28,19 @@ export class OrdersService {
     }
 
     for (const item of cartItems) {
-      if ((item.productStock ?? 0) < item.quantity) {
+      const stock = (item as any).variantId ? ((item as any).variantStock ?? 0) : (item.productStock ?? 0);
+      if (stock < item.quantity) {
         throw new InsufficientStockError(
-          `Insufficient stock for "${item.productName}". Available: ${item.productStock}`,
+          `Insufficient stock for "${item.productName}". Available: ${stock}`,
         );
       }
     }
 
     let totalAmount =
       cartItems.reduce((sum, item) => {
+        const priceStr = (item as any).variantPrice ?? item.productPrice ?? '0';
         const priceInCents = Math.round(
-          parseFloat(item.productPrice ?? '0') * 100,
+          parseFloat(priceStr) * 100,
         );
         return sum + priceInCents * item.quantity;
       }, 0) / 100;
@@ -94,16 +98,29 @@ export class OrdersService {
             title: 'Shipping Address',
             addressLine1: dto.addressLine1,
             city: dto.city,
+            latitude: dto.latitude,
+            longitude: dto.longitude,
             isDefault: false,
           },
           tx,
         ));
 
+      // Calculate delivery charge if zone and method are provided
+      let deliveryCharge = 0;
+      if (dto.zoneId && dto.deliveryMethod) {
+        // Calculate approximate weight from cart (default 0.5 for now, could be dynamic)
+        const totalWeight = cartItems.length * 0.5;
+        const calc = await this.courierService.calculateCharge(dto.zoneId, dto.deliveryMethod, totalWeight);
+        deliveryCharge = calc.charge;
+      }
+      
       const order = await this.ordersStore.createOrder(
         {
           userId,
           shippingAddressId: address.id,
-          totalAmount: totalAmount.toFixed(2),
+          totalAmount: (totalAmount + deliveryCharge).toFixed(2),
+          deliveryCharge: deliveryCharge.toFixed(2),
+          deliveryMethod: dto.deliveryMethod || 'home',
           status: 'pending',
           promoId: appliedPromoId,
           discountAmount: discountAmount.toString(),
@@ -116,15 +133,22 @@ export class OrdersService {
           {
             orderId: order.id,
             productId: item.productId,
+            variantId: (item as any).variantId,
+            variantAttributes: (item as any).variantAttributes,
             quantity: item.quantity,
-            unitPrice: item.productPrice ?? '0',
+            unitPrice: (item as any).variantPrice ?? item.productPrice ?? '0',
           },
           tx,
         );
 
-        const updated = await this.ordersStore.deductProductStock(item.productId!, item.quantity, tx);
+        let stockUpdated = false;
+        if ((item as any).variantId) {
+          stockUpdated = await this.ordersStore.deductVariantStock((item as any).variantId, item.quantity, tx);
+        } else {
+          stockUpdated = await this.ordersStore.deductProductStock(item.productId!, item.quantity, tx);
+        }
 
-        if (!updated) {
+        if (!stockUpdated) {
           throw new InsufficientStockError(
             `"${item.productName}" just sold out. Please remove it from your cart.`,
           );
@@ -281,6 +305,21 @@ export class OrdersService {
           },
           tx,
         );
+      } else if (status === 'delivered') {
+        const user = await this.ordersStore.getUserBasicInfo(order.userId, tx);
+        if (user?.phone) {
+          await this.ordersStore.createOutboxEvent(
+            {
+              type: 'SEND_SMS',
+              payload: {
+                type: 'delivered',
+                phone: user.phone,
+                orderId: id,
+              },
+            },
+            tx,
+          );
+        }
       }
 
       return order;

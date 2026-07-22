@@ -7,6 +7,8 @@ export interface CreateAddressDto {
   addressLine2?: string;
   city: string;
   zipCode?: string;
+  latitude?: string;
+  longitude?: string;
   isDefault?: boolean;
 }
 

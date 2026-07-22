@@ -8,6 +8,7 @@ import { ordersApi } from "@/lib/api/orders";
 import { paymentsApi } from "@/lib/api/payments";
 import { Order } from "@/types";
 import { toast } from "sonner";
+import Link from "next/link";
 
 const isCod = (order: Order) => order.payment?.method?.toUpperCase() === "COD";
 
@@ -196,7 +197,7 @@ export default function OrdersPage() {
                     </span>
                   </div>
                   <Button variant="outline" size="sm" asChild className="mt-2 hidden md:flex">
-                    <a href={`/dashboard/orders/${order.id}`}>View Details</a>
+                    <Link href={`/dashboard/orders/${order.id}`}>View Details</Link>
                   </Button>
                 </div>
               </div>
@@ -204,7 +205,7 @@ export default function OrdersPage() {
               {/* Mobile view details button */}
               <div className="md:hidden border-t p-4 bg-muted/5 flex justify-center">
                  <Button variant="outline" size="sm" asChild className="w-full">
-                    <a href={`/dashboard/orders/${order.id}`}>View Details</a>
+                    <Link href={`/dashboard/orders/${order.id}`}>View Details</Link>
                  </Button>
               </div>
 

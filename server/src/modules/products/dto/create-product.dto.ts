@@ -33,4 +33,8 @@ export class CreateProductDto {
   @IsString()
   @IsOptional()
   unit?: string;
+
+  @IsString()
+  @IsOptional()
+  variants?: string; // JSON string of variants
 }

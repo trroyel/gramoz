@@ -10,6 +10,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { categories } from './categories';
+import { productVariants } from './product_variants';
 
 export const products = pgTable('products', {
   id: uuid().primaryKey().defaultRandom(),
@@ -34,11 +35,12 @@ export const products = pgTable('products', {
   deletedAt: timestamp('deleted_at'),
 });
 
-export const productsRelations = relations(products, ({ one }) => ({
+export const productsRelations = relations(products, ({ one, many }) => ({
   category: one(categories, {
     fields: [products.categoryId],
     references: [categories.id],
   }),
+  variants: many(productVariants),
 }));
 
 export type Product = typeof products.$inferSelect;

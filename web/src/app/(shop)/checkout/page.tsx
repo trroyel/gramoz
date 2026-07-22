@@ -11,8 +11,20 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, PlusCircle, MapPin, Loader2, CreditCard, Banknote, Coins } from "lucide-react";
+import { CheckCircle2, PlusCircle, MapPin, Loader2, CreditCard, Banknote, Coins, Truck, Store } from "lucide-react";
 import { loyaltyApi } from "@/lib/api/loyalty";
+import { useRegions } from "@/hooks/queries/use-regions";
+import { courierApi } from "@/lib/api/courier";
+import dynamic from "next/dynamic";
+
+const LocationPicker = dynamic(() => import("@/components/addresses/location-picker"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[300px] bg-zinc-100 dark:bg-zinc-800 animate-pulse rounded-xl flex items-center justify-center">
+      <span className="text-zinc-400">Loading Map...</span>
+    </div>
+  ),
+});
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -24,12 +36,38 @@ export default function CheckoutPage() {
   const [loadingAddresses, setLoadingAddresses] = useState(true);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
-  const [newAddress, setNewAddress] = useState({ addressLine1: "", city: "", phone: "" });
+  const [newAddress, setNewAddress] = useState({ 
+    addressLine1: "", 
+    city: "", 
+    phone: "",
+    latitude: "",
+    longitude: ""
+  });
 
   const [paymentMethod, setPaymentMethod] = useState<"sslcommerz" | "bkash" | "nagad" | "cod">("sslcommerz");
 
+  // ── Delivery state ────────────────────────────────────────────────
+  const [deliveryMethod, setDeliveryMethod] = useState<"home" | "branch">("home");
+  const [deliveryCharge, setDeliveryCharge] = useState(0);
+  const { data: regions } = useRegions();
+  const [selectedDivision, setSelectedDivision] = useState("");
+  const [selectedDistrict, setSelectedDistrict] = useState("");
+  const [selectedZone, setSelectedZone] = useState("");
+
+  // ── Calculate Delivery Charge ────────────────────────────────────
+  useEffect(() => {
+    if (selectedZone) {
+      courierApi.calculateCharge({ zoneId: selectedZone, deliveryMethod, weightKg: items.length * 0.5 }).then(res => {
+        if (res.success && res.data) setDeliveryCharge(res.data.charge);
+      });
+    } else {
+      setDeliveryCharge(0);
+    }
+  }, [selectedZone, deliveryMethod, items]);
+
   // ── Loyalty state ────────────────────────────────────────────────
   const [loyaltyBalance, setLoyaltyBalance] = useState(0);
+  const [loyaltyCurrencyValue, setLoyaltyCurrencyValue] = useState(0);
   const [usePoints, setUsePoints] = useState(false);
 
   // ── Redirect empty cart ──────────────────────────────────────────
@@ -57,8 +95,24 @@ export default function CheckoutPage() {
     // Fetch loyalty balance
     loyaltyApi.getMyBalance().then((res) => {
       setLoyaltyBalance(res.data.balance || 0);
+      setLoyaltyCurrencyValue(res.data.currencyValue || 0);
     }).catch(err => console.log("Failed to load loyalty balance", err));
   }, []);
+
+  // ── Sync zoneId for saved addresses ─────────────────────────────
+  useEffect(() => {
+    if (!showNewForm && selectedAddressId && addresses.length > 0 && regions?.zones) {
+      const addr = addresses.find(a => a.id === selectedAddressId);
+      if (addr) {
+        const zone = regions.zones.find(z => z.name === addr.city);
+        if (zone) {
+          setSelectedZone(zone.id);
+        } else {
+          setSelectedZone(""); // No matching zone found
+        }
+      }
+    }
+  }, [selectedAddressId, addresses, regions, showNewForm]);
 
   // ── Submit ───────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,6 +122,8 @@ export default function CheckoutPage() {
     let addressLine1: string;
     let city: string;
     let phone: string;
+    let latitude: string | undefined;
+    let longitude: string | undefined;
 
     if (showNewForm || !selectedAddressId) {
       if (!newAddress.addressLine1 || !newAddress.city || !newAddress.phone) {
@@ -77,6 +133,8 @@ export default function CheckoutPage() {
       addressLine1 = newAddress.addressLine1;
       city = newAddress.city;
       phone = newAddress.phone;
+      latitude = newAddress.latitude || undefined;
+      longitude = newAddress.longitude || undefined;
     } else {
       const addr = addresses.find((a) => a.id === selectedAddressId);
       if (!addr) {
@@ -87,11 +145,17 @@ export default function CheckoutPage() {
       city = addr.city;
       // Use saved phone from address label/title if phone field exists, otherwise keep empty
       phone = (addr as any).phone ?? addr.title ?? "";
+      latitude = addr.latitude;
+      longitude = addr.longitude;
     }
 
     setIsProcessing(true);
     try {
-      const orderRes = await ordersApi.checkout({ addressLine1, city, phone, promoCode, usePoints });
+      const orderRes = await ordersApi.checkout({ 
+        addressLine1, city, phone, promoCode, usePoints, latitude, longitude,
+        zoneId: selectedZone || undefined,
+        deliveryMethod 
+      });
       if (!orderRes.success) throw new Error(orderRes.message || "Checkout failed");
 
       const orderId = orderRes.data?.id;
@@ -116,6 +180,8 @@ export default function CheckoutPage() {
       setIsProcessing(false);
     }
   };
+
+  const pointsDiscount = usePoints ? Math.min(loyaltyCurrencyValue, subtotal - discountAmount) : 0;
 
   return (
     <div className="container px-4 mx-auto max-w-4xl py-12">
@@ -191,7 +257,10 @@ export default function CheckoutPage() {
 
               {/* New address form */}
               {showNewForm && (
-                <div className="space-y-3 pt-2">
+                <div className="space-y-4 pt-2">
+                  <LocationPicker 
+                    onLocationSelect={(lat, lng) => setNewAddress({ ...newAddress, latitude: String(lat), longitude: String(lng) })} 
+                  />
                   <div className="space-y-1.5">
                     <Label htmlFor="addressLine1">Street Address</Label>
                     <Input
@@ -201,14 +270,61 @@ export default function CheckoutPage() {
                       onChange={(e) => setNewAddress({ ...newAddress, addressLine1: e.target.value })}
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="city">City / District</Label>
-                    <Input
-                      id="city"
-                      placeholder="Dhaka"
-                      value={newAddress.city}
-                      onChange={(e) => setNewAddress({ ...newAddress, city: e.target.value })}
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Division</Label>
+                      <select
+                        className="flex h-10 w-full items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:placeholder:text-zinc-400 dark:focus:ring-zinc-300"
+                        value={selectedDivision}
+                        onChange={(e) => {
+                          setSelectedDivision(e.target.value);
+                          setSelectedDistrict("");
+                          setSelectedZone("");
+                        }}
+                      >
+                        <option value="">Select Division</option>
+                        {regions?.divisions.map(d => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label>District</Label>
+                      <select
+                        className="flex h-10 w-full items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:placeholder:text-zinc-400 dark:focus:ring-zinc-300"
+                        value={selectedDistrict}
+                        onChange={(e) => {
+                          setSelectedDistrict(e.target.value);
+                          setSelectedZone("");
+                        }}
+                        disabled={!selectedDivision}
+                      >
+                        <option value="">Select District</option>
+                        {regions?.districts.filter(d => d.divisionId === selectedDivision).map(d => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5 md:col-span-2">
+                      <Label>Zone / Area</Label>
+                      <select
+                        className="flex h-10 w-full items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:placeholder:text-zinc-400 dark:focus:ring-zinc-300"
+                        value={selectedZone}
+                        onChange={(e) => {
+                          setSelectedZone(e.target.value);
+                          const zoneName = regions?.zones.find(z => z.id === e.target.value)?.name || "";
+                          setNewAddress({ ...newAddress, city: zoneName });
+                        }}
+                        disabled={!selectedDistrict}
+                      >
+                        <option value="">Select Zone</option>
+                        {regions?.zones.filter(z => z.districtId === selectedDistrict).map(z => (
+                          <option key={z.id} value={z.id}>{z.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="phone">Phone Number</Label>
@@ -218,6 +334,39 @@ export default function CheckoutPage() {
                       value={newAddress.phone}
                       onChange={(e) => setNewAddress({ ...newAddress, phone: e.target.value })}
                     />
+                  </div>
+                </div>
+              )}
+
+              {/* Delivery Method */}
+              {selectedZone && (
+                <div className="pt-4 border-t dark:border-zinc-800">
+                  <Label className="text-base font-semibold mb-3 block">Delivery Method</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryMethod('home')}
+                      className={`flex flex-col items-center justify-center p-4 border rounded-xl transition-all text-sm font-semibold ${
+                        deliveryMethod === 'home'
+                          ? "border-purple-600 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400"
+                          : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-600 dark:text-zinc-400"
+                      }`}
+                    >
+                      <Truck className="w-6 h-6 mb-1.5" />
+                      Home Delivery
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryMethod('branch')}
+                      className={`flex flex-col items-center justify-center p-4 border rounded-xl transition-all text-sm font-semibold ${
+                        deliveryMethod === 'branch'
+                          ? "border-purple-600 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400"
+                          : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-600 dark:text-zinc-400"
+                      }`}
+                    >
+                      <Store className="w-6 h-6 mb-1.5" />
+                      Branch Pickup
+                    </button>
                   </div>
                 </div>
               )}
@@ -327,9 +476,16 @@ export default function CheckoutPage() {
           <div className="space-y-4 mb-6 max-h-[300px] overflow-y-auto">
             {items.map((item) => (
               <div key={item.id} className="flex justify-between items-center text-sm">
-                <span className="text-zinc-600 dark:text-zinc-400">
-                  {item.quantity}x {item.productName}
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-zinc-600 dark:text-zinc-400">
+                    {item.quantity}x {item.productName}
+                  </span>
+                  {item.variantAttributes && Object.keys(item.variantAttributes).length > 0 && (
+                    <span className="text-xs text-zinc-400 mt-0.5">
+                      {Object.entries(item.variantAttributes).map(([k, v]) => `${v}`).join(' / ')}
+                    </span>
+                  )}
+                </div>
                 <span className="font-medium text-zinc-900 dark:text-zinc-100">
                   ৳{(parseFloat(item.productPrice) * item.quantity).toFixed(2)}
                 </span>
@@ -344,17 +500,27 @@ export default function CheckoutPage() {
             </div>
           )}
 
-          {usePoints && (
+          {usePoints && pointsDiscount > 0 && (
             <div className="flex justify-between items-center text-yellow-600 font-medium mb-2">
               <span>Loyalty Points Applied</span>
-              <span>Enabled</span>
+              <span>-৳{pointsDiscount.toFixed(2)}</span>
             </div>
           )}
 
           <div className="border-t dark:border-zinc-800 pt-4 mt-4">
-            <div className="flex justify-between items-center font-bold text-xl text-zinc-900 dark:text-zinc-50">
+            <div className="flex justify-between items-center text-zinc-600 dark:text-zinc-400 mb-2">
+              <span>Subtotal</span>
+              <span>৳{subtotal.toFixed(2)}</span>
+            </div>
+            {deliveryCharge > 0 && (
+              <div className="flex justify-between items-center text-zinc-600 dark:text-zinc-400 mb-2">
+                <span>Delivery Charge</span>
+                <span>৳{deliveryCharge.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center font-bold text-xl text-zinc-900 dark:text-zinc-50 mt-4">
               <span>Total</span>
-              <span>৳{Math.max(0, subtotal - discountAmount).toFixed(2)}</span>
+              <span>৳{Math.max(0, subtotal - discountAmount - pointsDiscount + deliveryCharge).toFixed(2)}</span>
             </div>
           </div>
         </div>

@@ -1,5 +1,13 @@
 "use client";
 
+const getImageUrl = (urlOrObj?: string | { url?: string } | any) => {
+  if (!urlOrObj) return "";
+  const url = typeof urlOrObj === 'string' ? urlOrObj : urlOrObj?.url;
+  if (!url || typeof url !== 'string') return "";
+  if (url.startsWith('http')) return url;
+  return url.startsWith('/uploads') ? `/public${url}` : url;
+};
+
 import { useState, useEffect } from "react";
 import { Review } from "@/types";
 import { reviewsApi } from "@/lib/api/reviews";
@@ -35,7 +43,16 @@ export default function AdminReviewsPage() {
       const res = await reviewsApi.updateReviewStatus(id, status);
       if (res.success) {
         toast.success(`Review ${status}`);
+        const updatedReview = reviews.find(r => r.id === id);
         setReviews(reviews.map(r => r.id === id ? { ...r, status } : r));
+        // Immediately bust the ISR cache for the product page
+        if (updatedReview?.productId) {
+          await fetch('/api/revalidate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: `/products/${updatedReview.productId}` }),
+          });
+        }
       }
     } catch (err: any) {
       toast.error(err.message || `Failed to ${status} review`);
@@ -64,7 +81,7 @@ export default function AdminReviewsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="container px-4 py-8 mx-auto space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Review Moderation</h1>
         <p className="text-muted-foreground mt-2">Manage customer product reviews.</p>
@@ -86,6 +103,7 @@ export default function AdminReviewsPage() {
                   <TableHead>Product</TableHead>
                   <TableHead>Rating</TableHead>
                   <TableHead className="w-[300px]">Comment</TableHead>
+                  <TableHead>Images</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -108,6 +126,23 @@ export default function AdminReviewsPage() {
                     </TableCell>
                     <TableCell>
                       <p className="text-sm line-clamp-2">{review.comment || <span className="italic text-muted-foreground">No comment</span>}</p>
+                    </TableCell>
+                    <TableCell>
+                      {review.images && review.images.length > 0 ? (
+                        <div className="flex gap-1">
+                          {review.images.map((img: any, idx: number) => (
+                            <a key={idx} href={getImageUrl(img)} target="_blank" rel="noopener noreferrer">
+                              <img
+                                src={getImageUrl(img)}
+                                alt={`Review image ${idx + 1}`}
+                                className="w-10 h-10 object-cover rounded-md border dark:border-zinc-700 hover:opacity-80 transition"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs italic text-muted-foreground">None</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full capitalize

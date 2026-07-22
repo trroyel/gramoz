@@ -32,10 +32,11 @@ export class CartService {
 
     // Calculate totals
     const subtotal = items.reduce((sum, item) => {
-      return sum + parseFloat(item.productPrice ?? '0') * item.quantity;
+      const price = parseFloat((item as any).variantPrice ?? item.productPrice ?? '0');
+      return sum + price * item.quantity;
     }, 0);
 
-    return { items, subtotal: subtotal.toFixed(2), itemCount: items.length };
+    return { items: items as any, subtotal: subtotal.toFixed(2), itemCount: items.length };
   }
 
   async addItem(userId: string, dto: AddToCartDto): Promise<schema.CartItem> {
@@ -45,19 +46,28 @@ export class CartService {
     if (!product) throw new EntityNotFoundError('Product not found');
     if (product.status !== 'active')
       throw new InvalidOperationError('Product is not available');
-    if (product.stock < dto.quantity)
+      
+    let maxStock = product.stock;
+    if (dto.variantId) {
+      const variant = await this.cartStore.getVariantById(dto.variantId);
+      if (!variant) throw new EntityNotFoundError('Variant not found');
+      if (variant.productId !== product.id) throw new InvalidOperationError('Variant does not belong to product');
+      maxStock = variant.stock;
+    }
+
+    if (maxStock < dto.quantity)
       throw new InsufficientStockError(
-        `Only ${product.stock} units available in stock`,
+        `Only ${maxStock} units available in stock`,
       );
 
     // If item already in cart, update quantity
-    const existing = await this.cartStore.findCartItemByProduct(userId, dto.productId);
+    const existing = await this.cartStore.findCartItemByProduct(userId, dto.productId, dto.variantId);
 
     if (existing) {
       const newQty = existing.quantity + dto.quantity;
-      if (newQty > product.stock)
+      if (newQty > maxStock)
         throw new InsufficientStockError(
-          `Cannot add more. Only ${product.stock} units available`,
+          `Cannot add more. Only ${maxStock} units available`,
         );
 
       return await this.cartStore.updateCartItemQuantity(existing.id, newQty);
@@ -67,6 +77,7 @@ export class CartService {
     return await this.cartStore.createCartItem({
       userId,
       productId: dto.productId,
+      variantId: dto.variantId,
       quantity: dto.quantity,
     });
   }
@@ -80,10 +91,18 @@ export class CartService {
     const product = await this.cartStore.getProductById(item.productId);
 
     if (!product) throw new EntityNotFoundError('Product not found');
+    
+    let maxStock = product.stock;
+    if (item.variantId) {
+      const variant = await this.cartStore.getVariantById(item.variantId);
+      if (variant) {
+        maxStock = variant.stock;
+      }
+    }
 
-    if (product.stock < quantity)
+    if (maxStock < quantity)
       throw new InsufficientStockError(
-        `Only ${product.stock} units available in stock`,
+        `Only ${maxStock} units available in stock`,
       );
 
     return await this.cartStore.updateCartItemQuantity(cartItemId, quantity);

@@ -1,4 +1,5 @@
 import {
+  boolean,
   integer,
   pgTable,
   timestamp,
@@ -19,16 +20,16 @@ export const cartItems = pgTable(
     productId: uuid('product_id')
       .notNull()
       .references(() => products.id),
+    variantId: uuid('variant_id'), // optional, refers to product_variants
 
     quantity: integer().notNull().default(1),
+    abandonedEmailSent: boolean('abandoned_email_sent').notNull().default(false),
 
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
-  (table) => [
-    // One row per (user, product) — enforced at DB level
-    uniqueIndex('uq_cart_items_user_product').on(table.userId, table.productId),
-  ],
+  // We remove the DB level unique constraint because we want to allow 
+  // same product with different variants. Application logic will handle uniqueness.
 );
 
 export const cartItemsRelations = relations(cartItems, ({ one }) => ({

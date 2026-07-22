@@ -45,6 +45,7 @@ export const productsApi = {
     if (data.categoryId) formData.append('categoryId', data.categoryId);
     if (data.unit) formData.append('unit', data.unit);
     if (data.description) formData.append('description', data.description);
+    if (data.variants) formData.append('variants', data.variants);
     if (data.images && data.images.length > 0) formData.append('image', data.images[0]);
 
     return multipartRequest<ApiResponse<Product>>('/products', 'POST', formData);
@@ -70,6 +71,7 @@ export const productsApi = {
     if (data.categoryId) formData.append('categoryId', data.categoryId);
     if (data.unit) formData.append('unit', data.unit);
     if (data.description) formData.append('description', data.description);
+    if (data.variants) formData.append('variants', data.variants);
     if (data.images && data.images.length > 0) formData.append('image', data.images[0]);
 
     return multipartRequest<ApiResponse<Product>>(`/products/${id}`, 'PUT', formData);

@@ -34,22 +34,27 @@ export default function CustomerDashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user, logout, _hasHydrated } = useAuthStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    // Redirect if not logged in
+    // Wait for Zustand to finish rehydrating from localStorage before checking auth.
+    // Without this guard, user is briefly null during hydration which triggers a
+    // spurious redirect to /login (which the proxy then bounces back to /dashboard).
+    if (!_hasHydrated) return;
+
     if (!user) {
       router.push("/login");
     }
-  }, [user, router]);
+  }, [user, router, _hasHydrated]);
 
   const handleLogout = async () => {
     await logout();
     router.push("/login");
   };
 
-  if (!user) return null; // Avoid flashing the layout before redirect
+  // Show nothing until hydration is complete — avoids both a flash and a bad redirect.
+  if (!_hasHydrated || !user) return null;
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black flex flex-col md:flex-row">

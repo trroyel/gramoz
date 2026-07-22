@@ -25,11 +25,19 @@ export class OrdersStore {
         productPrice: schema.products.price,
         productStock: schema.products.stock,
         productName: schema.products.name,
+        variantId: schema.cartItems.variantId,
+        variantPrice: schema.productVariants.price,
+        variantStock: schema.productVariants.stock,
+        variantAttributes: schema.productVariants.attributes,
       })
       .from(schema.cartItems)
       .leftJoin(
         schema.products,
         eq(schema.cartItems.productId, schema.products.id),
+      )
+      .leftJoin(
+        schema.productVariants,
+        eq(schema.cartItems.variantId, schema.productVariants.id),
       )
       .where(eq(schema.cartItems.userId, userId));
   }
@@ -106,6 +114,25 @@ export class OrdersStore {
     return !!updated;
   }
 
+  async deductVariantStock(variantId: string, quantity: number, tx?: any): Promise<boolean> {
+    const executor = tx || this.db;
+    const [updated] = await executor
+      .update(schema.productVariants)
+      .set({
+        stock: sql`${schema.productVariants.stock} - ${quantity}`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.productVariants.id, variantId),
+          sql`${schema.productVariants.stock} >= ${quantity}`,
+        ),
+      )
+      .returning({ stock: schema.productVariants.stock });
+      
+    return !!updated;
+  }
+
   async createInventoryTransaction(data: typeof schema.inventoryTransactions.$inferInsert, tx?: any): Promise<void> {
     const executor = tx || this.db;
     await executor.insert(schema.inventoryTransactions).values(data);
@@ -129,10 +156,10 @@ export class OrdersStore {
   }
 
   // --- Users ---
-  async getUserBasicInfo(userId: string, tx?: any): Promise<{ email: string, fullName: string } | null> {
+  async getUserBasicInfo(userId: string, tx?: any): Promise<{ email: string, fullName: string, phone: string | null } | null> {
     const executor = tx || this.db;
     const [user] = await executor
-      .select({ email: schema.users.email, fullName: schema.users.fullName })
+      .select({ email: schema.users.email, fullName: schema.users.fullName, phone: schema.users.phone })
       .from(schema.users)
       .where(eq(schema.users.id, userId));
     return user || null;
@@ -182,14 +209,22 @@ export class OrdersStore {
       .select({
         id: schema.orderItems.id,
         productId: schema.orderItems.productId,
+        variantId: schema.orderItems.variantId,
+        variantAttributes: schema.orderItems.variantAttributes,
         quantity: schema.orderItems.quantity,
         unitPrice: schema.orderItems.unitPrice,
         productName: schema.products.name,
+        productImages: schema.products.images,
+        variantImage: schema.productVariants.imageUrl,
       })
       .from(schema.orderItems)
       .leftJoin(
         schema.products,
         eq(schema.orderItems.productId, schema.products.id),
+      )
+      .leftJoin(
+        schema.productVariants,
+        eq(schema.orderItems.variantId, schema.productVariants.id),
       )
       .where(eq(schema.orderItems.orderId, orderId));
   }

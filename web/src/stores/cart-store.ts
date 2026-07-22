@@ -17,7 +17,7 @@ interface CartState {
   
   // Actions
   fetchCart: () => Promise<void>;
-  addItem: (productId: string, quantity?: number) => Promise<void>;
+  addItem: (productId: string, quantity?: number, variantId?: string) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
   updateQuantity: (itemId: string, quantity: number) => Promise<void>;
   clearCart: () => Promise<void>;
@@ -62,10 +62,10 @@ export const useCartStore = create<CartState>((set, get) => ({
     }
   },
 
-  addItem: async (productId: string, quantity = 1) => {
+  addItem: async (productId: string, quantity = 1, variantId?: string) => {
     set({ isLoading: true });
     try {
-      const res = await cartApi.addItem(productId, quantity);
+      const res = await cartApi.addItem(productId, quantity, variantId);
       if (res.success) {
         toast.success('Item added to cart');
         await get().fetchCart();

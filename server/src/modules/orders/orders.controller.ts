@@ -7,10 +7,13 @@ import {
   UseGuards,
   Patch,
   ParseUUIDPipe,
+  Res,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import type { FastifyReply } from 'fastify';
 
 import { OrdersService } from './orders.service';
+import { InvoicesService } from './invoices.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
@@ -22,7 +25,10 @@ import type { User } from '@database/schema';
 @UseGuards(JwtAuthGuard)
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly invoicesService: InvoicesService,
+  ) {}
 
   // Tight limit — checkout hits DB, stock, inventory, and external email on every call.
   // 5 per minute per IP is enough for any real user; stops abuse and double-submit spam.
@@ -49,6 +55,17 @@ export class OrdersController {
     return orderDetails;
   }
 
+  @Get(':id/invoice')
+  async downloadInvoice(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: FastifyReply,
+  ) {
+    // Validate order belongs to user
+    await this.ordersService.getOrderDetails(user.id, id);
+    await this.invoicesService.generateInvoicePdf(id, res);
+  }
+
   @Get('admin/all')
   @UseGuards(RolesGuard)
   @Roles(...PLATFORM_ROLES)
@@ -63,6 +80,16 @@ export class OrdersController {
   async getOrderDetailsAsAdmin(@Param('id', ParseUUIDPipe) id: string) {
     const orderDetails = await this.ordersService.getOrderDetailsAsAdmin(id);
     return orderDetails;
+  }
+
+  @Get('admin/:id/invoice')
+  @UseGuards(RolesGuard)
+  @Roles(...PLATFORM_ROLES)
+  async downloadAdminInvoice(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: FastifyReply,
+  ) {
+    await this.invoicesService.generateInvoicePdf(id, res);
   }
 
   @Patch('admin/:id/status')

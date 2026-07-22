@@ -28,6 +28,7 @@ export const orderStatusEnum = pgEnum('order_status', [
   'shipped',
   'delivered',
   'cancelled',
+  'refunded',
 ]);
 
 /** Separate lifecycle for payment — independent of the fulfillment status */

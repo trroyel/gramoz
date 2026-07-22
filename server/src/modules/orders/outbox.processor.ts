@@ -6,6 +6,7 @@ import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
 import { CourierService } from '../courier/courier.service';
 import { MailService } from '../notifications/mail.service';
+import { SmsService } from '../notifications/sms.service';
 
 const MAX_ATTEMPTS = 3;
 
@@ -29,6 +30,7 @@ export class OutboxProcessor {
     @Inject(DATABASE) private readonly db: NodePgDatabase<typeof schema>,
     private readonly courierService: CourierService,
     private readonly mailService: MailService,
+    private readonly smsService: SmsService,
   ) {}
 
   @Cron(CronExpression.EVERY_30_SECONDS)
@@ -86,6 +88,9 @@ export class OutboxProcessor {
           break;
         case 'SEND_LOW_STOCK_ALERT':
           await this.handleSendLowStockAlert(event);
+          break;
+        case 'SEND_SMS':
+          await this.handleSendSms(event);
           break;
         default:
           this.logger.warn(`Unknown outbox event type: ${event.type}`);
@@ -193,6 +198,19 @@ export class OutboxProcessor {
         updatedAt: new Date(),
       })
       .where(eq(schema.orders.id, payload.orderId));
+
+    // Queue SMS notification for shipped status
+    if (user?.phone) {
+      await this.db.insert(schema.outboxEvents).values({
+        type: 'SEND_SMS',
+        payload: {
+          type: 'shipped',
+          phone: user.phone,
+          orderId: payload.orderId,
+          trackingUrl: consignment.trackingUrl ?? '',
+        },
+      });
+    }
   }
 
   private async markFailed(eventId: string, error: string): Promise<void> {
@@ -251,6 +269,25 @@ export class OutboxProcessor {
 
     if (lowStock.length > 0) {
       await this.mailService.sendLowStockAlert(lowStock);
+    }
+  }
+
+  private async handleSendSms(event: schema.OutboxEvent): Promise<void> {
+    const payload = event.payload as {
+      type: 'shipped' | 'delivered';
+      phone: string;
+      orderId: string;
+      trackingUrl?: string;
+    };
+
+    if (payload.type === 'shipped') {
+      await this.smsService.sendOrderShippedSms(
+        payload.phone,
+        payload.orderId,
+        payload.trackingUrl,
+      );
+    } else if (payload.type === 'delivered') {
+      await this.smsService.sendOrderDeliveredSms(payload.phone, payload.orderId);
     }
   }
 }
