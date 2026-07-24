@@ -7,6 +7,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { users } from './users';
+import { zones } from './shipping_zones';
 import { relations } from 'drizzle-orm';
 
 export const addresses = pgTable('addresses', {
@@ -24,6 +25,9 @@ export const addresses = pgTable('addresses', {
   latitude: decimal('latitude', { precision: 10, scale: 7 }),
   longitude: decimal('longitude', { precision: 10, scale: 7 }),
 
+  // Shipping zone — nullable for backwards compatibility with old addresses
+  zoneId: uuid('zone_id').references(() => zones.id),
+
   isDefault: boolean('is_default').notNull().default(false),
 
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -34,6 +38,10 @@ export const addressesRelations = relations(addresses, ({ one }) => ({
   user: one(users, {
     fields: [addresses.userId],
     references: [users.id],
+  }),
+  zone: one(zones, {
+    fields: [addresses.zoneId],
+    references: [zones.id],
   }),
 }));
 

@@ -10,6 +10,7 @@ export interface CreateAddressDto {
   latitude?: string;
   longitude?: string;
   isDefault?: boolean;
+  zoneId?: string;
 }
 
 export interface UpdateAddressDto extends Partial<CreateAddressDto> {}

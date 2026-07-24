@@ -90,9 +90,16 @@ export class OrdersService {
     const result = await this.ordersStore.runTransaction(async (tx) => {
       const existingAddress = await this.ordersStore.findAddress(userId, dto.addressLine1, dto.city, tx);
 
-      const address =
-        existingAddress ??
-        (await this.ordersStore.createAddress(
+      let address: schema.Address;
+      if (existingAddress) {
+        // Backfill zoneId if it was missing (old address saved before this feature)
+        if (dto.zoneId && !existingAddress.zoneId) {
+          address = await this.ordersStore.updateAddressZone(existingAddress.id, dto.zoneId, tx);
+        } else {
+          address = existingAddress;
+        }
+      } else {
+        address = await this.ordersStore.createAddress(
           {
             userId,
             title: 'Shipping Address',
@@ -100,10 +107,13 @@ export class OrdersService {
             city: dto.city,
             latitude: dto.latitude,
             longitude: dto.longitude,
+            zoneId: dto.zoneId,
             isDefault: false,
           },
           tx,
-        ));
+        );
+      }
+
 
       // Calculate delivery charge if zone and method are provided
       let deliveryCharge = 0;

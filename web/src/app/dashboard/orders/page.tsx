@@ -130,20 +130,7 @@ export default function OrdersPage() {
         </p>
       </div>
 
-      <Card className="border-dashed border-2 bg-muted/20">
-        <CardHeader className="text-center pb-2">
-          <div className="mx-auto bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mb-4">
-            <Truck className="w-8 h-8 text-primary" />
-          </div>
-          <CardTitle>Order Tracking System</CardTitle>
-          <CardDescription className="max-w-md mx-auto">
-            This module will integrate with external Courier APIs (like Pathao, Steadfast, etc.) to provide real-time tracking updates directly on this page.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex justify-center pb-8 pt-4">
-          <Button disabled variant="outline">API Integration Pending</Button>
-        </CardContent>
-      </Card>
+
 
       {isLoading ? (
         <div className="flex justify-center py-12">

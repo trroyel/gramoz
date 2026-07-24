@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Package, Eye, X, MapPin, Truck, ShoppingCart, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ordersApi } from "@/lib/api/orders";
+import { courierApi } from "@/lib/api/courier";
 import { toast } from "sonner";
 
 
@@ -13,6 +14,7 @@ export default function AdminOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [courierStatus, setCourierStatus] = useState<string | null>(null);
 
   const fetchOrders = async () => {
     try {
@@ -51,14 +53,23 @@ export default function AdminOrdersPage() {
   const openOrderDetails = async (orderId: string) => {
     setIsModalOpen(true);
     setIsLoadingDetails(true);
+    setCourierStatus(null);
     try {
       const response = await ordersApi.getAdminOrder(orderId);
       if (response.success && response.data) {
         setSelectedOrder(response.data);
+        if (response.data.consignmentId) {
+          courierApi.trackPackage(response.data.consignmentId)
+            .then(res => {
+              if (res.success && res.currentStatus) {
+                setCourierStatus(res.currentStatus);
+              }
+            })
+            .catch(() => {});
+        }
       }
     } catch (error) {
       toast.error("Failed to fetch order details");
-      setIsModalOpen(false);
     } finally {
       setIsLoadingDetails(false);
     }
@@ -146,6 +157,7 @@ export default function AdminOrdersPage() {
                         <option value="shipped">Shipped</option>
                         <option value="delivered">Delivered</option>
                         <option value="cancelled">Cancelled</option>
+                        <option value="refunded">Refunded</option>
                       </select>
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -254,9 +266,16 @@ export default function AdminOrdersPage() {
                         <span className="font-medium">Consignment ID:</span> {selectedOrder.consignmentId}
                       </p>
                       <p className="text-sm text-blue-800 dark:text-blue-200 mt-1">
-                        <span className="font-medium">Tracking URL:</span>{' '}
+                        <span className="font-medium">Live Courier Status:</span>{' '}
+                        {courierStatus ? (
+                          <span className="font-semibold text-blue-900 dark:text-blue-100 bg-blue-100 dark:bg-blue-900/50 px-2 py-0.5 rounded">{courierStatus}</span>
+                        ) : (
+                          <span className="italic">Fetching...</span>
+                        )}
+                      </p>
+                      <p className="text-sm text-blue-800 dark:text-blue-200 mt-2">
                         <a href={selectedOrder.trackingUrl} target="_blank" rel="noreferrer" className="underline hover:text-blue-600">
-                          {selectedOrder.trackingUrl}
+                          View Full Tracking Route
                         </a>
                       </p>
                     </div>

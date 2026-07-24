@@ -58,7 +58,8 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (selectedZone) {
       courierApi.calculateCharge({ zoneId: selectedZone, deliveryMethod, weightKg: items.length * 0.5 }).then(res => {
-        if (res.success && res.data) setDeliveryCharge(res.data.charge);
+        // Server returns flat { success, charge, estimatedDays } — not wrapped in data
+        if (res.success && typeof res.charge === 'number') setDeliveryCharge(res.charge);
       });
     } else {
       setDeliveryCharge(0);
@@ -101,14 +102,18 @@ export default function CheckoutPage() {
 
   // ── Sync zoneId for saved addresses ─────────────────────────────
   useEffect(() => {
-    if (!showNewForm && selectedAddressId && addresses.length > 0 && regions?.zones) {
+    if (!showNewForm && selectedAddressId && addresses.length > 0) {
       const addr = addresses.find(a => a.id === selectedAddressId);
       if (addr) {
-        const zone = regions.zones.find(z => z.name === addr.city);
-        if (zone) {
-          setSelectedZone(zone.id);
+        if (addr.zoneId) {
+          // ✅ Direct lookup — reliable
+          setSelectedZone(addr.zoneId);
+        } else if (regions?.zones) {
+          // Fallback for old addresses without zoneId: try name-match as best effort
+          const zone = regions.zones.find(z => z.name === addr.city);
+          setSelectedZone(zone ? zone.id : "");
         } else {
-          setSelectedZone(""); // No matching zone found
+          setSelectedZone("");
         }
       }
     }
@@ -334,6 +339,58 @@ export default function CheckoutPage() {
                       value={newAddress.phone}
                       onChange={(e) => setNewAddress({ ...newAddress, phone: e.target.value })}
                     />
+                  </div>
+                </div>
+              )}
+
+              {/* Zone picker for saved addresses that have no stored zoneId yet */}
+              {!showNewForm && selectedAddressId && !selectedZone && (
+                <div className="space-y-3 pt-3 border-t dark:border-zinc-800">
+                  <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
+                    ⚠️ Please select your delivery zone to calculate shipping cost.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Division</Label>
+                      <select
+                        className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:ring-zinc-300"
+                        value={selectedDivision}
+                        onChange={(e) => { setSelectedDivision(e.target.value); setSelectedDistrict(""); setSelectedZone(""); }}
+                      >
+                        <option value="">Select Division</option>
+                        {regions?.divisions.map(d => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>District</Label>
+                      <select
+                        className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:ring-zinc-300"
+                        value={selectedDistrict}
+                        onChange={(e) => { setSelectedDistrict(e.target.value); setSelectedZone(""); }}
+                        disabled={!selectedDivision}
+                      >
+                        <option value="">Select District</option>
+                        {regions?.districts.filter(d => d.divisionId === selectedDivision).map(d => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2">
+                      <Label>Zone / Area</Label>
+                      <select
+                        className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:ring-zinc-300"
+                        value={selectedZone}
+                        onChange={(e) => setSelectedZone(e.target.value)}
+                        disabled={!selectedDistrict}
+                      >
+                        <option value="">Select Zone</option>
+                        {regions?.zones.filter(z => z.districtId === selectedDistrict).map(z => (
+                          <option key={z.id} value={z.id}>{z.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
               )}

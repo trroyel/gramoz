@@ -103,6 +103,7 @@ export interface Address {
   country?: string;
   latitude?: string;
   longitude?: string;
+  zoneId?: string | null;
   isDefault: boolean;
 }
 

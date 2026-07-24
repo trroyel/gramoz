@@ -75,6 +75,17 @@ export class OrdersStore {
     return address;
   }
 
+  /** Backfills zoneId on an existing address that was saved before this column existed. */
+  async updateAddressZone(addressId: string, zoneId: string, tx?: any): Promise<schema.Address> {
+    const executor = tx || this.db;
+    const [updated] = await executor
+      .update(schema.addresses)
+      .set({ zoneId, updatedAt: new Date() })
+      .where(eq(schema.addresses.id, addressId))
+      .returning();
+    return updated;
+  }
+
   // --- Orders & Items ---
   async createOrder(data: typeof schema.orders.$inferInsert, tx?: any): Promise<schema.Order> {
     const executor = tx || this.db;

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ordersApi } from "@/lib/api/orders";
+import { courierApi } from "@/lib/api/courier";
 import { Order } from "@/types";
 import { Loader2, ArrowLeft, Package, MapPin, Truck, CheckCircle2, XCircle, Clock, Banknote } from "lucide-react";
 import { toast } from "sonner";
@@ -17,6 +18,7 @@ export default function OrderDetailPage() {
   const router = useRouter();
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [courierStatus, setCourierStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchOrderDetails = async () => {
@@ -24,6 +26,15 @@ export default function OrderDetailPage() {
         const res = await ordersApi.getOrder(id as string);
         if (res.success && res.data) {
           setOrder(res.data);
+          if (res.data.consignmentId) {
+            courierApi.trackPackage(res.data.consignmentId)
+              .then((cRes) => {
+                if (cRes.success && cRes.currentStatus) {
+                  setCourierStatus(cRes.currentStatus);
+                }
+              })
+              .catch(() => {});
+          }
         } else {
           toast.error("Failed to load order details");
           router.push("/dashboard/orders");
@@ -218,12 +229,21 @@ export default function OrderDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
-                  Your order has been shipped! Tracking Code: <span className="font-mono font-medium text-zinc-900 dark:text-zinc-100">{order.consignmentId}</span>
-                </p>
+                <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-4 space-y-1">
+                  <p>Your order has been shipped!</p>
+                  <p>Tracking Code: <span className="font-mono font-medium text-zinc-900 dark:text-zinc-100">{order.consignmentId}</span></p>
+                  <p className="pt-1">
+                    Live Courier Status:{' '}
+                    {courierStatus ? (
+                      <span className="font-semibold text-blue-900 dark:text-blue-100 bg-blue-100 dark:bg-blue-900/50 px-2 py-0.5 rounded ml-1">{courierStatus}</span>
+                    ) : (
+                      <span className="italic ml-1">Fetching...</span>
+                    )}
+                  </p>
+                </div>
                 <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" asChild>
                   <Link href={`/track?code=${order.consignmentId}`}>
-                    Track Order
+                    View Full Tracking Route
                   </Link>
                 </Button>
               </CardContent>

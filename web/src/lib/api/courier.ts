@@ -17,8 +17,8 @@ class CourierApi extends HttpClient {
     return res;
   }
 
-  async calculateCharge(payload: { zoneId: string; deliveryMethod: 'home' | 'branch'; weightKg?: number }) {
-    return this.request<ApiResponse<{ charge: number; estimatedDays: string }>>('/courier/calculate', {
+  async calculateCharge(payload: { zoneId: string; deliveryMethod: 'home' | 'branch'; weightKg?: number }): Promise<{ success: boolean; charge?: number; estimatedDays?: string }> {
+    return this.request<{ success: boolean; charge?: number; estimatedDays?: string }>('/courier/calculate', {
       method: 'POST',
       body: JSON.stringify(payload),
     });

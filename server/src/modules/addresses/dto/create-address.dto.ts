@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsUUID } from 'class-validator';
 
 export class CreateAddressDto {
   @IsString()
@@ -32,4 +32,8 @@ export class CreateAddressDto {
   @IsString()
   @IsOptional()
   longitude?: string;
+
+  @IsUUID()
+  @IsOptional()
+  zoneId?: string;
 }
