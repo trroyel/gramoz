@@ -14,6 +14,8 @@ import {
   useDeleteAddress, 
   useSetDefaultAddress 
 } from "@/hooks/queries/use-addresses";
+import { useQuery } from "@tanstack/react-query";
+import { courierApi } from "@/lib/api/courier";
 import dynamic from "next/dynamic";
 
 const LocationPicker = dynamic(() => import("@/components/addresses/location-picker"), {
@@ -32,6 +34,14 @@ export default function AddressesPage() {
   const deleteAddress = useDeleteAddress();
   const setDefaultAddress = useSetDefaultAddress();
   
+  const { data: regionsData } = useQuery({
+    queryKey: ['regions'],
+    queryFn: () => courierApi.getRegions(),
+  });
+
+  const [selectedDivision, setSelectedDivision] = useState<string>("");
+  const [selectedDistrict, setSelectedDistrict] = useState<string>("");
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
@@ -44,6 +54,7 @@ export default function AddressesPage() {
     latitude: "",
     longitude: "",
     isDefault: false,
+    zoneId: "",
   });
 
   const handleCreateAddress = async (e: React.FormEvent) => {
@@ -71,7 +82,10 @@ export default function AddressesPage() {
       latitude: "",
       longitude: "",
       isDefault: false,
+      zoneId: "",
     });
+    setSelectedDivision("");
+    setSelectedDistrict("");
   };
 
   const handleDelete = async (id: string) => {
@@ -85,6 +99,22 @@ export default function AddressesPage() {
 
   const openEditModal = (address: Address) => {
     setEditingId(address.id);
+
+    let initialDistrict = "";
+    let initialDivision = "";
+    if (address.zoneId && regionsData) {
+      const zone = regionsData.zones.find(z => z.id === address.zoneId);
+      if (zone) {
+        initialDistrict = zone.districtId;
+        const district = regionsData.districts.find(d => d.id === zone.districtId);
+        if (district) {
+          initialDivision = district.divisionId;
+        }
+      }
+    }
+    setSelectedDistrict(initialDistrict);
+    setSelectedDivision(initialDivision);
+
     setFormData({
       title: address.title || "",
       addressLine1: address.addressLine1 || "",
@@ -94,6 +124,7 @@ export default function AddressesPage() {
       latitude: address.latitude || "",
       longitude: address.longitude || "",
       isDefault: address.isDefault || false,
+      zoneId: address.zoneId || "",
     });
     setIsModalOpen(true);
   };
@@ -109,7 +140,10 @@ export default function AddressesPage() {
       latitude: "",
       longitude: "",
       isDefault: false,
+      zoneId: "",
     });
+    setSelectedDivision("");
+    setSelectedDistrict("");
     setIsModalOpen(true);
   };
   
@@ -249,7 +283,27 @@ export default function AddressesPage() {
               <form onSubmit={handleCreateAddress} className="space-y-4">
                 <LocationPicker 
                   initialPosition={formData.latitude && formData.longitude ? [parseFloat(formData.latitude), parseFloat(formData.longitude)] : undefined}
-                  onLocationSelect={(lat, lng) => setFormData({ ...formData, latitude: String(lat), longitude: String(lng) })} 
+                  onLocationSelect={async (lat, lng) => {
+                    setFormData((prev) => ({ ...prev, latitude: String(lat), longitude: String(lng) }));
+                    try {
+                      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+                      const data = await res.json();
+                      if (data && data.address) {
+                        const { road, suburb, neighbourhood, city, town, village, county, state_district, city_district, postcode } = data.address;
+                        const addressLine1 = [road, suburb || neighbourhood].filter(Boolean).join(", ") || formData.addressLine1;
+                        const cityName = city || town || village || city_district || county || state_district || formData.city;
+                        
+                        setFormData((prev) => ({
+                          ...prev,
+                          addressLine1,
+                          city: cityName,
+                          zipCode: postcode || prev.zipCode,
+                        }));
+                      }
+                    } catch (error) {
+                      console.error("Failed to fetch address:", error);
+                    }
+                  }} 
                 />
                 <div className="space-y-2">
                   <Label htmlFor="title">Address Title (e.g., Home, Office)</Label>
@@ -299,6 +353,66 @@ export default function AddressesPage() {
                       value={formData.zipCode}
                       onChange={(e) => setFormData({...formData, zipCode: e.target.value})}
                     />
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                  <h3 className="font-medium text-sm">Delivery Zone (Required for Shipping)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="division">Division</Label>
+                      <select 
+                        id="division"
+                        className="flex h-9 w-full rounded-md border border-zinc-200 bg-white dark:bg-zinc-950 px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-green-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800"
+                        value={selectedDivision}
+                        onChange={(e) => {
+                          setSelectedDivision(e.target.value);
+                          setSelectedDistrict("");
+                          setFormData({...formData, zoneId: ""});
+                        }}
+                        required
+                      >
+                        <option value="" disabled>Select Division</option>
+                        {regionsData?.divisions.map(d => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="district">District</Label>
+                      <select 
+                        id="district"
+                        className="flex h-9 w-full rounded-md border border-zinc-200 bg-white dark:bg-zinc-950 px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-green-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800"
+                        value={selectedDistrict}
+                        onChange={(e) => {
+                          setSelectedDistrict(e.target.value);
+                          setFormData({...formData, zoneId: ""});
+                        }}
+                        disabled={!selectedDivision}
+                        required
+                      >
+                        <option value="" disabled>Select District</option>
+                        {regionsData?.districts.filter(d => d.divisionId === selectedDivision).map(d => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="zone">Zone / Area</Label>
+                      <select 
+                        id="zone"
+                        className="flex h-9 w-full rounded-md border border-zinc-200 bg-white dark:bg-zinc-950 px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-green-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800"
+                        value={formData.zoneId}
+                        onChange={(e) => setFormData({...formData, zoneId: e.target.value})}
+                        disabled={!selectedDistrict}
+                        required
+                      >
+                        <option value="" disabled>Select Zone</option>
+                        {regionsData?.zones.filter(z => z.districtId === selectedDistrict).map(z => (
+                          <option key={z.id} value={z.id}>{z.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
                 

@@ -37,25 +37,42 @@ export interface ConsignmentResponse {
 @Injectable()
 export class CourierService {
   private readonly logger = new Logger(CourierService.name);
-  private readonly apiKey: string;
-  private readonly secretKey: string;
-  private readonly baseUrl = 'https://portal.steadfast.com.bd/api/v1';
-
   constructor(
     private readonly configService: ConfigService,
     @Inject(DATABASE) private readonly db: NodePgDatabase<typeof schema>,
-  ) {
-    this.apiKey = this.configService.get<string>('STEADFAST_API_KEY', '');
-    this.secretKey = this.configService.get<string>('STEADFAST_SECRET_KEY', '');
+  ) {}
+
+  private readonly baseUrl = 'https://portal.steadfast.com.bd/api/v1';
+
+  private async getCredentials() {
+    const keys = await this.db.select().from(schema.settings).where(
+      eq(schema.settings.key, 'COURIER_SETTINGS')
+    );
+    let settings = { mode: 'mock', apiKey: '', secretKey: '' };
+    if (keys.length > 0 && keys[0].value) {
+      try {
+        settings = JSON.parse(keys[0].value);
+      } catch (e) {}
+    }
+    
+    // Fallback to .env if DB is empty but .env has it (for legacy support)
+    if (!settings.apiKey && !settings.secretKey) {
+      settings.apiKey = this.configService.get<string>('STEADFAST_API_KEY', '');
+      settings.secretKey = this.configService.get<string>('STEADFAST_SECRET_KEY', '');
+    }
+    
+    return settings;
   }
 
   async createConsignment(
     request: ConsignmentRequest,
   ): Promise<ConsignmentResponse> {
-    // If credentials are not configured, fall back to mock so local dev still works
-    if (!this.apiKey || !this.secretKey) {
+    const creds = await this.getCredentials();
+
+    // If credentials are not configured or mode is mock, fall back to mock so local dev still works
+    if (creds.mode === 'mock' || !creds.apiKey || !creds.secretKey) {
       this.logger.warn(
-        'STEADFAST_API_KEY / STEADFAST_SECRET_KEY not set — using mock response',
+        'Courier is in mock mode or API keys not set — using mock response',
       );
       return this.mockConsignment(request);
     }
@@ -73,8 +90,8 @@ export class CourierService {
       const response = await fetch(`${this.baseUrl}/create_order`, {
         method: 'POST',
         headers: {
-          'Api-Key': this.apiKey,
-          'Secret-Key': this.secretKey,
+          'Api-Key': creds.apiKey,
+          'Secret-Key': creds.secretKey,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -111,16 +128,20 @@ export class CourierService {
     // Attempt to pull real coordinates from DB if order exists
     let realDestination = null;
     let realCurrent = null;
+    let orderRecord = null;
     try {
-      const orderRecord = await this.db.query.orders.findFirst({
+      this.logger.log(`Looking up order with consignmentId: ${trackingCode}`);
+      orderRecord = await this.db.query.orders.findFirst({
         where: eq(schema.orders.consignmentId, trackingCode),
         with: {
           shippingAddress: true
         }
       });
+      this.logger.log(`Order record found: ${!!orderRecord}, status: ${orderRecord?.status}`);
+      
       if (orderRecord && orderRecord.shippingAddress && orderRecord.shippingAddress.latitude && orderRecord.shippingAddress.longitude) {
-        const destLat = parseFloat(orderRecord.shippingAddress.latitude);
-        const destLng = parseFloat(orderRecord.shippingAddress.longitude);
+        const destLat = parseFloat(orderRecord.shippingAddress.latitude as unknown as string);
+        const destLng = parseFloat(orderRecord.shippingAddress.longitude as unknown as string);
         realDestination = [destLat, destLng];
         // Calculate a mid-point for the truck's mock current location
         realCurrent = [
@@ -132,22 +153,33 @@ export class CourierService {
       this.logger.warn(`Failed to pull DB coordinates for tracking code ${trackingCode}: ${err.message}`);
     }
 
-    if (!this.apiKey || !this.secretKey) {
+    const creds = await this.getCredentials();
+
+    if (creds.mode === 'mock' || !creds.apiKey || !creds.secretKey) {
+      const realStatus = orderRecord ? orderRecord.status : 'shipped';
+      
+      const isOutForDelivery = realStatus === 'out_for_delivery' || realStatus === 'delivered';
+      const isDelivered = realStatus === 'delivered';
+      
+      let displayStatus = 'In Transit';
+      if (isDelivered) displayStatus = 'Delivered';
+      else if (isOutForDelivery) displayStatus = 'Out for Delivery';
+      
       return { 
         success: true, 
         trackingCode, 
         isMock: true,
-        currentStatus: 'In Transit',
+        currentStatus: displayStatus,
         origin: [24.363, 88.835], // Puthia, Rajshahi
         destination: realDestination || [23.7925, 90.4078], // Use real DB coords if found, else Dhaka
-        currentLocation: realCurrent || [24.25, 89.91], // Use mid-point if real coords found, else Tangail
+        currentLocation: isDelivered ? (realDestination || [23.7925, 90.4078]) : (realCurrent || [24.25, 89.91]),
 
         timeline: [
           { status: 'Order Placed', description: 'Your order was successfully placed.', time: new Date(Date.now() - 86400000 * 2).toISOString(), completed: true },
           { status: 'Picked Up by Courier', description: 'The package has been picked up from our warehouse in Puthia, Rajshahi.', time: new Date(Date.now() - 86400000).toISOString(), completed: true },
           { status: 'In Transit', description: 'The package is on its way to your city.', time: new Date(Date.now() - 43200000).toISOString(), completed: true },
-          { status: 'Out for Delivery', description: 'The package is out for delivery.', time: null, completed: false },
-          { status: 'Delivered', description: 'The package has been delivered.', time: null, completed: false },
+          { status: 'Out for Delivery', description: 'The package is out for delivery.', time: isOutForDelivery ? new Date(Date.now() - 3600000).toISOString() : null, completed: isOutForDelivery },
+          { status: 'Delivered', description: 'The package has been delivered.', time: isDelivered ? new Date().toISOString() : null, completed: isDelivered },
         ] 
       };
     }
@@ -157,8 +189,8 @@ export class CourierService {
         `${this.baseUrl}/status_by_invoice/${trackingCode}`,
         {
           headers: {
-            'Api-Key': this.apiKey,
-            'Secret-Key': this.secretKey,
+            'Api-Key': creds.apiKey,
+            'Secret-Key': creds.secretKey,
           },
         },
       );

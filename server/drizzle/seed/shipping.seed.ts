@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import fetch from 'node-fetch';
-import * as schema from './schema';
+import * as schema from '../../src/database/schema';
 import { eq, and } from 'drizzle-orm';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });

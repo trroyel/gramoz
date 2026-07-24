@@ -91,7 +91,7 @@ export default function AdminRefundsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="container px-4 py-8 mx-auto space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Refund Management</h1>
         <p className="text-muted-foreground mt-2">Process and review customer refund requests.</p>

@@ -21,6 +21,7 @@ export const users = pgTable(
 
     fullName: varchar('full_name', { length: 150 }).notNull(),
     phone: varchar({ length: 20 }),
+    avatarUrl: text('avatar_url'),
 
     // OAuth provider tracking ('local' | 'google' | 'facebook')
     provider: varchar({ length: 50 }).notNull().default('local'),

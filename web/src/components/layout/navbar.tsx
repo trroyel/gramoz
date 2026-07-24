@@ -143,7 +143,11 @@ export function Navbar() {
                   className="gap-2"
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 >
-                  <User className="h-4 w-4" />
+                  {user?.avatarUrl ? (
+                    <img src={user.avatarUrl} alt="Avatar" className="h-6 w-6 rounded-full object-cover" />
+                  ) : (
+                    <User className="h-4 w-4" />
+                  )}
                   <span className="hidden sm:inline max-w-[100px] truncate">{user?.fullName || "Account"}</span>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 </Button>

@@ -126,4 +126,20 @@ export class ConfigService {
       'http://localhost:3000',
     );
   }
+
+  // Facebook OAuth
+  get facebookAppId(): string {
+    return this.configService.get<string>('FB_APP_ID', '');
+  }
+
+  get facebookAppSecret(): string {
+    return this.configService.get<string>('FB_APP_SECRET', '');
+  }
+
+  get facebookCallbackUrl(): string {
+    return this.configService.get<string>(
+      'FB_CALLBACK_URL',
+      'http://localhost:5000/api/v1/auth/facebook/callback',
+    );
+  }
 }

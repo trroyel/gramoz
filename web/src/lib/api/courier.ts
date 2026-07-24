@@ -27,6 +27,29 @@ class CourierApi extends HttpClient {
   async trackPackage(code: string): Promise<any> {
     return this.request<any>(`/courier/track/${code}`);
   }
+
+  // --- Admin Methods ---
+  async getSettings(): Promise<{ success: boolean; data?: { mode: string; apiKey: string; secretKey: string } }> {
+    return this.request('/admin/courier/settings');
+  }
+
+  async updateSettings(payload: { mode: string; apiKey: string; secretKey: string }): Promise<ApiResponse> {
+    return this.request('/admin/courier/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getAdminZones(): Promise<{ success: boolean; data?: RegionsData }> {
+    return this.request('/admin/courier/zones');
+  }
+
+  async updateZoneCharge(id: string, payload: { homeDeliveryCharge: string; branchPickupCharge: string }): Promise<ApiResponse> {
+    return this.request(`/admin/courier/zones/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
 }
 
 export const courierApi = new CourierApi();

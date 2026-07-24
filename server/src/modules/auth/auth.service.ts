@@ -17,7 +17,14 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { User } from '@database/schema';
-import { GoogleProfile } from './strategies/google.strategy';
+
+export interface OAuthProfile {
+  provider: 'google' | 'facebook';
+  id: string;
+  email: string;
+  fullName: string;
+  picture?: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -284,6 +291,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
+        avatarUrl: user.avatarUrl,
         role: user.role,
         phone: user.phone,
         isEmailVerified: user.isEmailVerified,
@@ -295,10 +303,10 @@ export class AuthService {
   }
 
   /**
-   * Find or create a user based on their Google profile.
+   * Find or create a user based on their OAuth profile.
    * Generates and stores tokens so the callback can set cookies.
    */
-  async validateOAuthUser(profile: GoogleProfile): Promise<{
+  async validateOAuthUser(profile: OAuthProfile): Promise<{
     user: User;
     accessToken: string;
     refreshToken: string;
@@ -306,16 +314,17 @@ export class AuthService {
     let user: User | undefined;
 
     // 1. Try to find by provider + providerId (most specific match)
-    user = await this.usersStore.findByProviderId('google', profile.googleId);
+    user = await this.usersStore.findByProviderId(profile.provider, profile.id);
 
     // 2. Fall back to email match (user may have registered locally before)
     if (!user) {
       user = await this.usersStore.findByEmail(profile.email);
       if (user) {
-        // Link the Google account to the existing local account
+        // Link the OAuth account to the existing local account
           await this.usersStore.update(user.id, {
-          provider: 'google',
-          providerId: profile.googleId,
+          provider: profile.provider,
+          providerId: profile.id,
+          avatarUrl: profile.picture || user.avatarUrl,
           isEmailVerified: true,
         });
         user = (await this.usersStore.findById(user.id)) as User;
@@ -327,9 +336,10 @@ export class AuthService {
       user = await this.usersStore.create({
         email: profile.email,
         fullName: profile.fullName,
+        avatarUrl: profile.picture,
         passwordHash: null,
-        provider: 'google',
-        providerId: profile.googleId,
+        provider: profile.provider,
+        providerId: profile.id,
         isEmailVerified: true,
         isPhoneVerified: false,
         status: 'active',
@@ -346,7 +356,10 @@ export class AuthService {
       refreshToken,
       this.config.jwtRefreshExpiresIn,
     );
-    await this.usersStore.update(user.id, { lastLoginAt: new Date() });
+    await this.usersStore.update(user.id, { 
+      lastLoginAt: new Date(),
+      avatarUrl: profile.picture || user.avatarUrl,
+    });
 
     return { user, accessToken, refreshToken };
   }

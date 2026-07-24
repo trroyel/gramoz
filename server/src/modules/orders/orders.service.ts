@@ -290,8 +290,10 @@ export class OrdersService {
       'pending',
       'processing',
       'shipped',
+      'out_for_delivery',
       'delivered',
       'cancelled',
+      'refunded',
     ];
     if (!validStatuses.includes(status)) {
       throw new InvalidOperationError(

@@ -20,7 +20,8 @@ import {
   Coins,
   LayoutTemplate,
   MessageSquare,
-  RefreshCcw
+  RefreshCcw,
+  Truck
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ const sidebarLinks = [
   { name: "Reviews", href: "/admin/reviews", icon: MessageSquare },
   { name: "Refunds", href: "/admin/refunds", icon: RefreshCcw },
   { name: "Loyalty", href: "/admin/settings/loyalty", icon: Coins },
+  { name: "Shipping & Courier", href: "/admin/courier", icon: Truck },
   { name: "System", href: "/admin/system", icon: Activity },
   { name: "My Account", href: "/dashboard/profile", icon: UserIcon },
 ];

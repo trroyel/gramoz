@@ -21,7 +21,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx drizzle/seed/users.seed.ts"
+    "db:seed": "tsx drizzle/seed/users.seed.ts",
+    "db:seed:shipping": "tsx drizzle/seed/shipping.seed.ts"
   },
   "engines": {
     "npm": ">=10.0.0",
@@ -71,6 +72,7 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.7",
+    "@types/node-fetch": "^2.6.13",
     "@types/passport-jwt": "^4.0.1",
     "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.20.0",

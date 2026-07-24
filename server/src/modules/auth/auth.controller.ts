@@ -251,7 +251,8 @@ export class AuthController {
 
       const { accessToken, refreshToken } =
         await this.authService.validateOAuthUser({
-          googleId: profile.id,
+          provider: 'google',
+          id: profile.id,
           email: profile.email,
           fullName: profile.name,
           picture: profile.picture,
@@ -277,6 +278,118 @@ export class AuthController {
       );
     } catch (err) {
       this.logger.error('[Google OAuth] Callback error:', err);
+      return redirect(`${this.config.frontendUrl}/login?error=oauth_failed`);
+    }
+  }
+
+  // ─── Facebook OAuth (manual — Fastify-compatible) ────────────────────────
+
+  @SkipThrottle()
+  @Get('facebook')
+  async facebookLogin(@Res() res: FastifyReply) {
+    const state = randomBytes(16).toString('hex');
+    res.setCookie('oauth_state', state, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 300,
+      signed: true,
+    });
+
+    const params = new URLSearchParams({
+      client_id: this.config.facebookAppId,
+      redirect_uri: this.config.facebookCallbackUrl,
+      state,
+      scope: 'email,public_profile',
+    });
+    const facebookUrl = `https://www.facebook.com/v19.0/dialog/oauth?${params.toString()}`;
+    return res.code(302).header('Location', facebookUrl).send();
+  }
+
+  @SkipThrottle()
+  @Get('facebook/callback')
+  async facebookCallback(
+    @Query('code') code: string,
+    @Query('error') error: string,
+    @Query('state') state: string,
+    @Req() req: FastifyRequest,
+    @Res() res: FastifyReply,
+  ) {
+    const redirect = (url: string) =>
+      res.code(302).header('Location', url).send();
+
+    if (error || !code) {
+      return redirect(`${this.config.frontendUrl}/login?error=oauth_denied`);
+    }
+
+    const unsignedState = req.unsignCookie(req.cookies['oauth_state'] ?? '');
+    const storedState = unsignedState.valid ? unsignedState.value : null;
+    res.clearCookie('oauth_state', { path: '/' });
+
+    if (!storedState || !state || storedState !== state) {
+      this.logger.warn(
+        '[Facebook OAuth] State mismatch — possible CSRF attempt.',
+      );
+      return redirect(`${this.config.frontendUrl}/login?error=oauth_state_mismatch`);
+    }
+
+    try {
+      // Exchange authorisation code for access token
+      const tokenParams = new URLSearchParams({
+        client_id: this.config.facebookAppId,
+        client_secret: this.config.facebookAppSecret,
+        redirect_uri: this.config.facebookCallbackUrl,
+        code,
+      });
+      const tokenRes = await fetch(
+        `https://graph.facebook.com/v19.0/oauth/access_token?${tokenParams.toString()}`,
+      );
+      const tokenData = (await tokenRes.json()) as any;
+      
+      if (!tokenData.access_token) {
+        throw new Error('No access_token received from Facebook');
+      }
+
+      // Fetch user profile from Facebook
+      const profileRes = await fetch(
+        `https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${tokenData.access_token}`,
+      );
+      const profile = (await profileRes.json()) as any;
+      
+      if (!profile.email) {
+        throw new Error('Facebook account does not have an email associated or access was denied.');
+      }
+
+      const { accessToken, refreshToken } =
+        await this.authService.validateOAuthUser({
+          provider: 'facebook',
+          id: profile.id,
+          email: profile.email,
+          fullName: profile.name,
+          picture: profile.picture?.data?.url,
+        });
+
+      res.setCookie('access_token', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 15 * 60,
+      });
+      res.setCookie('refresh_token', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: COOKIE_MAX_AGE_SECONDS,
+      });
+
+      return redirect(
+        `${this.config.frontendUrl}/auth/callback?provider=facebook`,
+      );
+    } catch (err) {
+      this.logger.error('[Facebook OAuth] Callback error:', err);
       return redirect(`${this.config.frontendUrl}/login?error=oauth_failed`);
     }
   }
