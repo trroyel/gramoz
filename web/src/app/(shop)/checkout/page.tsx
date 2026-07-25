@@ -16,6 +16,7 @@ import { loyaltyApi } from "@/lib/api/loyalty";
 import { useRegions } from "@/hooks/queries/use-regions";
 import { courierApi } from "@/lib/api/courier";
 import dynamic from "next/dynamic";
+import { PhoneVerificationModal } from "@/components/auth/phone-verification-modal";
 
 const LocationPicker = dynamic(() => import("@/components/addresses/location-picker"), {
   ssr: false,
@@ -30,6 +31,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { items, subtotal, promoCode, discountAmount } = useCartStore();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
 
   // ── Address state ────────────────────────────────────────────────
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -181,7 +183,11 @@ export default function CheckoutPage() {
         throw new Error(payRes.message || "Payment initiation failed");
       }
     } catch (error: any) {
-      toast.error(error.message || "An error occurred during checkout");
+      if (error.message && error.message.includes("Phone number verification is required")) {
+        setIsPhoneModalOpen(true);
+      } else {
+        toast.error(error.message || "An error occurred during checkout");
+      }
       setIsProcessing(false);
     }
   };
@@ -190,6 +196,15 @@ export default function CheckoutPage() {
 
   return (
     <div className="container px-4 mx-auto max-w-4xl py-12">
+      <PhoneVerificationModal 
+        isOpen={isPhoneModalOpen}
+        onClose={() => setIsPhoneModalOpen(false)}
+        onSuccess={() => {
+          setIsPhoneModalOpen(false);
+          // Wait briefly for modal to close, then re-trigger checkout or let user click again.
+          // Since user requested "modal will close then click place order", we just close it.
+        }}
+      />
       <h1 className="text-3xl font-bold mb-8 text-center">Checkout</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-10">

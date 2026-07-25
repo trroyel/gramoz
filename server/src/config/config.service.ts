@@ -3,7 +3,7 @@ import { ConfigService as NestConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ConfigService {
-  constructor(private readonly configService: NestConfigService) {}
+  constructor(private readonly configService: NestConfigService) { }
 
   // Application
   get nodeEnv(): string {
@@ -142,4 +142,10 @@ export class ConfigService {
       'http://localhost:5000/api/v1/auth/facebook/callback',
     );
   }
+
+  // SMS Token
+  get gwSmsToken(): string {
+    return this.configService.get<string>('GW_SMS_TOKEN', '');
+  }
 }
+

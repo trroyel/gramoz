@@ -8,6 +8,7 @@ import {
   Patch,
   ParseUUIDPipe,
   Res,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply } from 'fastify';
@@ -35,6 +36,10 @@ export class OrdersController {
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @Post('checkout')
   async checkout(@CurrentUser() user: User, @Body() dto: CreateOrderDto) {
+    if (!user.isPhoneVerified) {
+      throw new ForbiddenException('Phone number verification is required to place an order.');
+    }
+    
     const order = await this.ordersService.createOrderFromCart(user.id, dto);
     return {
       success: true,

@@ -20,6 +20,8 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { SendPhoneOtpDto } from './dto/send-phone-otp.dto';
+import { VerifyPhoneOtpDto } from './dto/verify-phone-otp.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { User } from '@database/schema';
@@ -137,6 +139,20 @@ export class AuthController {
   @Post('reset-password')
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  @UseGuards(JwtAuthGuard)
+  @Post('phone/send-otp')
+  async sendPhoneOtp(@CurrentUser() user: User, @Body() dto: SendPhoneOtpDto) {
+    return this.authService.sendPhoneOtp(user, dto.phone);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @UseGuards(JwtAuthGuard)
+  @Post('phone/verify-otp')
+  async verifyPhoneOtp(@CurrentUser() user: User, @Body() dto: VerifyPhoneOtpDto) {
+    return this.authService.verifyPhoneOtp(user, dto);
   }
 
   @SkipThrottle()

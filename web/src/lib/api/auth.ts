@@ -20,6 +20,15 @@ export interface VerifyEmailData {
   code: string;
 }
 
+export interface SendPhoneOtpData {
+  phone: string;
+}
+
+export interface VerifyPhoneOtpData {
+  phone: string;
+  code: string;
+}
+
 export interface ForgotPasswordData {
   email: string;
 }
@@ -45,6 +54,18 @@ export const authApi = {
 
   verifyEmail: (data: VerifyEmailData) =>
     httpClient.request<ApiResponse>('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  sendPhoneOtp: (data: SendPhoneOtpData) =>
+    httpClient.request<ApiResponse>('/auth/phone/send-otp', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  verifyPhoneOtp: (data: VerifyPhoneOtpData) =>
+    httpClient.request<ApiResponse>('/auth/phone/verify-otp', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

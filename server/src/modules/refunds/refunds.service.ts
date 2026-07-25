@@ -50,8 +50,8 @@ export class RefundsService {
     if (!order) throw new EntityNotFoundError('Order not found');
     if (order.userId !== userId) throw new ForbiddenOperationError('You can only request a refund for your own orders');
 
-    // Only delivered/shipped orders can be refunded
-    if (!['delivered', 'shipped'].includes(order.status)) {
+    // Only delivered orders can be refunded
+    if (order.status !== 'delivered') {
       throw new InvalidOperationError('Refunds can only be requested for delivered orders');
     }
 

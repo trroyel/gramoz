@@ -11,7 +11,10 @@ import { ConfigService } from '@config/config.service';
 import { RedisService } from '@cache/redis.service';
 import { UsersStore } from '@modules/users/users.store';
 import { MailService } from '../notifications/mail.service';
+import { SmsService } from '../notifications/sms.service';
 import { RegisterDto } from './dto/register.dto';
+import { SendPhoneOtpDto } from './dto/send-phone-otp.dto';
+import { VerifyPhoneOtpDto } from './dto/verify-phone-otp.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -33,6 +36,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly redis: RedisService,
     private readonly mail: MailService,
+    private readonly sms: SmsService,
     private readonly config: ConfigService,
   ) {}
 
@@ -211,6 +215,73 @@ export class AuthService {
     return {
       success: true,
       message: 'Verification code sent to your email',
+      data: null,
+    };
+  }
+
+  async sendPhoneOtp(user: User, phone: string) {
+    if (user.isPhoneVerified && user.phone === phone) {
+      throw new BadRequestException('Phone number is already verified');
+    }
+
+    // Generate 6-digit code
+    const code = this.redis.generate6DigitCode();
+    await this.redis.setPhoneVerificationCode(
+      phone,
+      code,
+      '10m', // 10 minutes expiry
+    );
+
+    // Send verification SMS
+    await this.sms.sendVerificationSms(phone, code);
+
+    return {
+      success: true,
+      message: 'Verification code sent to your phone',
+      data: null,
+    };
+  }
+
+  async verifyPhoneOtp(user: User, dto: VerifyPhoneOtpDto) {
+    // Get stored code
+    const storedCode = await this.redis.getPhoneVerificationCode(dto.phone);
+    if (!storedCode) {
+      throw new BadRequestException('Verification code expired or invalid');
+    }
+
+    const MAX_ATTEMPTS = 5;
+    const attempts = await this.redis.incrementPhoneVerifyAttempts(dto.phone);
+
+    if (attempts > MAX_ATTEMPTS) {
+      await this.redis.deletePhoneVerificationCode(dto.phone);
+      await this.redis.clearPhoneVerifyAttempts(dto.phone);
+      throw new BadRequestException(
+        'Too many failed attempts. Your verification code has been invalidated — please request a new one.',
+      );
+    }
+
+    if (storedCode !== dto.code) {
+      const remaining = MAX_ATTEMPTS - attempts;
+      throw new BadRequestException(
+        remaining > 0
+          ? `Invalid verification code. ${remaining} attempt(s) remaining.`
+          : 'Invalid verification code. No attempts remaining — please request a new code.',
+      );
+    }
+
+    // Code is correct
+    await this.redis.deletePhoneVerificationCode(dto.phone);
+    await this.redis.clearPhoneVerifyAttempts(dto.phone);
+
+    // Update user
+    await this.usersStore.update(user.id, { 
+      phone: dto.phone, 
+      isPhoneVerified: true 
+    });
+
+    return {
+      success: true,
+      message: 'Phone number verified successfully',
       data: null,
     };
   }

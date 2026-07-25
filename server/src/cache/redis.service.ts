@@ -59,6 +59,24 @@ export class RedisService implements OnModuleDestroy {
     await this.client.del(`auth:verify:${email}`);
   }
 
+  // Phone verification code
+  async setPhoneVerificationCode(
+    phone: string,
+    code: string,
+    expiresIn: string,
+  ): Promise<void> {
+    const ttl = this.parseDuration(expiresIn);
+    await this.client.setex(`auth:verify-phone:${phone}`, ttl, code);
+  }
+
+  async getPhoneVerificationCode(phone: string): Promise<string | null> {
+    return this.client.get(`auth:verify-phone:${phone}`);
+  }
+
+  async deletePhoneVerificationCode(phone: string): Promise<void> {
+    await this.client.del(`auth:verify-phone:${phone}`);
+  }
+
   // Password reset code
   async setResetCode(
     email: string,
@@ -108,12 +126,31 @@ export class RedisService implements OnModuleDestroy {
     await this.client.del(`auth:verify:attempts:${email}`);
   }
 
+  async incrementPhoneVerifyAttempts(phone: string): Promise<number> {
+    const key = `auth:verify-phone:attempts:${phone}`;
+    const count = await this.client.incr(key);
+    if (count === 1) {
+      // Phone OTPs usually have a shorter TTL, but we match the 4h max to be safe.
+      await this.client.expire(key, 4 * 60 * 60);
+    }
+    return count;
+  }
+
+  async clearPhoneVerifyAttempts(phone: string): Promise<void> {
+    await this.client.del(`auth:verify-phone:attempts:${phone}`);
+  }
+
   // Generate an 8-digit cryptographically secure OTP code.
   // crypto.randomInt(min, max) uses the OS CSPRNG — unlike Math.random(),
   // its output cannot be predicted by observing previous values.
   // Range: 10_000_000–99_999_999 (inclusive min, exclusive max) = 8 digits guaranteed.
   generateCode(): string {
     return randomInt(10_000_000, 100_000_000).toString();
+  }
+
+  // Generate a 6-digit cryptographically secure OTP code for SMS.
+  generate6DigitCode(): string {
+    return randomInt(100_000, 1_000_000).toString();
   }
 
   // Parse duration string to seconds (e.g., "15m" -> 900, "7d" -> 604800)

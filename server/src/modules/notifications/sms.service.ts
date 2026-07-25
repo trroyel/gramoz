@@ -13,18 +13,43 @@ export class SmsService {
    */
   async sendSms(phone: string, message: string): Promise<boolean> {
     try {
-      this.logger.log(`\n================= SMS NOTIFICATION =================`);
-      this.logger.log(`TO: ${phone}`);
-      this.logger.log(`MESSAGE: ${message}`);
-      this.logger.log(`====================================================\n`);
-      
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const token = this.config.gwSmsToken;
+      if (!token) {
+        this.logger.warn(`GW_SMS_TOKEN is not set! Logging SMS locally: TO=${phone} MSG=${message}`);
+        return true;
+      }
+
+      const body = new URLSearchParams({
+        token,
+        to: phone,
+        message,
+      });
+
+      const response = await fetch('http://api.bdbulksms.net/api.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+      });
+
+      const responseText = await response.text();
+      this.logger.log(`BulkSMS BD API response for ${phone}: ${responseText}`);
+
+      if (!response.ok) {
+        throw new Error(`API returned HTTP status ${response.status}: ${responseText}`);
+      }
+
       return true;
     } catch (error) {
       this.logger.error(`Failed to send SMS to ${phone}:`, error);
       return false;
     }
+  }
+
+  async sendVerificationSms(phone: string, code: string): Promise<boolean> {
+    const text = `Your Gramoz verification code is ${code}. It expires in 10 minutes.`;
+    return this.sendSms(phone, text);
   }
 
   async sendOrderShippedSms(phone: string, orderId: string, trackingUrl?: string): Promise<boolean> {

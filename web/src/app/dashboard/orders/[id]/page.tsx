@@ -250,7 +250,7 @@ export default function OrderDetailPage() {
             </Card>
           )}
           {/* Refund Action Card */}
-          {['delivered', 'shipped'].includes(order.status) && (
+          {order.status === 'delivered' && (
             <Card className="border-red-100 bg-red-50/30 dark:border-red-900/50 dark:bg-red-900/10">
               <CardHeader className="pb-3">
                 <CardTitle className="text-red-700 dark:text-red-400">Order Issue?</CardTitle>
