@@ -120,6 +120,13 @@
       "when": 1784715659832,
       "tag": "0016_free_mimic",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784976546671,
+      "tag": "0017_eager_silverclaw",
+      "breakpoints": true
     }
   ]
 }

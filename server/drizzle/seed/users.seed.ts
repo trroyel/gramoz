@@ -12,20 +12,20 @@ async function seed() {
   console.log('🌱 Seeding database...');
 
   try {
-    // Insert sample users
-    await db.insert(schema.users).values([
-      {
-        email: 'admin@gramoz.com',
-        passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$KwkIzEJjLsqv2eW6K1sphg$uAmZCxfvI7qxYCTDvai+vOAfRaAsd/C1I+F5tkD49Ns', // password: password123
-        fullName: 'Admin User',
-        phone: '+8801712345678',
-        provider: 'local',
-        role: 'super_admin', //admin, support, manager,customer
-        isEmailVerified: true,
-        isPhoneVerified: true,
-        status: 'active',
-      },
-    ]);
+      //Insert sample users
+      await db.insert(schema.users).values([
+        {
+          email: 'superadmin@gramoz.com',
+          passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$KwkIzEJjLsqv2eW6K1sphg$uAmZCxfvI7qxYCTDvai+vOAfRaAsd/C1I+F5tkD49Ns', // password: password123
+          fullName: 'Admin User',
+          phone: '+8801717295844',
+          provider: 'local',
+          role: 'super_admin', //admin, support, manager,customer
+          isEmailVerified: true,
+          isPhoneVerified: true,
+          status: 'active',
+        },
+      ]);
 
     console.log('✅ Seed completed successfully!');
   } catch (error) {
