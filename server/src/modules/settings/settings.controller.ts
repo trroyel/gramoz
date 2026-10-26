@@ -1,4 +1,14 @@
-import { Controller, Get, Put, Post, Body, UseGuards, UseInterceptors, Req, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Put,
+  Post,
+  Body,
+  UseGuards,
+  UseInterceptors,
+  Req,
+  Res,
+} from '@nestjs/common';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { SettingsService } from './settings.service';
 import { StorageService } from '../storage/storage.service';
@@ -46,7 +56,9 @@ export class SettingsController {
     try {
       const uploadedFile = (req as any).uploadedFile;
       if (!uploadedFile) {
-        return res.status(400).send({ success: false, message: 'No file uploaded' });
+        return res
+          .status(400)
+          .send({ success: false, message: 'No file uploaded' });
       }
 
       const imageUrl = await this.storageService.upload(

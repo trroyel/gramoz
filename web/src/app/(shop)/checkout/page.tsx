@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/stores/cart-store";
+import { cartSync } from "@/lib/cart-sync";
 import { ordersApi } from "@/lib/api/orders";
 import { paymentsApi } from "@/lib/api/payments";
 import { addressesApi } from "@/lib/api/addresses";
@@ -32,6 +33,11 @@ export default function CheckoutPage() {
   const { items, subtotal, promoCode, discountAmount } = useCartStore();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
+  const [idempotencyKey] = useState<string>(() => {
+    return typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `idemp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  });
 
   // ── Address state ────────────────────────────────────────────────
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -124,6 +130,7 @@ export default function CheckoutPage() {
   // ── Submit ───────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isProcessing) return;
 
     // Determine which address details to send
     let addressLine1: string;
@@ -151,7 +158,7 @@ export default function CheckoutPage() {
       addressLine1 = addr.addressLine1;
       city = addr.city;
       // Use saved phone from address label/title if phone field exists, otherwise keep empty
-      phone = (addr as any).phone ?? addr.title ?? "";
+      phone = (addr as { phone?: string }).phone ?? addr.title ?? "";
       latitude = addr.latitude;
       longitude = addr.longitude;
     }
@@ -161,13 +168,18 @@ export default function CheckoutPage() {
       const orderRes = await ordersApi.checkout({ 
         addressLine1, city, phone, promoCode, usePoints, latitude, longitude,
         zoneId: selectedZone || undefined,
-        deliveryMethod 
+        deliveryMethod,
+        idempotencyKey,
       });
       if (!orderRes.success) throw new Error(orderRes.message || "Checkout failed");
 
       const orderId = orderRes.data?.id;
       if (!orderId) throw new Error("Order was created but ID is missing. Please contact support.");
       toast.success("Order created! Initiating payment…");
+
+      // Synchronize client-side cart store since database cart was cleared during order transaction
+      useCartStore.getState().resetCart();
+      cartSync.broadcast({ type: "CART_CLEARED" });
 
       const payRes = await paymentsApi.initiate(orderId, paymentMethod);
       if (payRes.success) {
@@ -182,11 +194,12 @@ export default function CheckoutPage() {
       } else {
         throw new Error(payRes.message || "Payment initiation failed");
       }
-    } catch (error: any) {
-      if (error.message && error.message.includes("Phone number verification is required")) {
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      if (err.message && err.message.includes("Phone number verification is required")) {
         setIsPhoneModalOpen(true);
       } else {
-        toast.error(error.message || "An error occurred during checkout");
+        toast.error(err.message || "An error occurred during checkout");
       }
       setIsProcessing(false);
     }
@@ -488,7 +501,7 @@ export default function CheckoutPage() {
                     <button
                       key={pm.id}
                       type="button"
-                      onClick={() => setPaymentMethod(pm.id as any)}
+                      onClick={() => setPaymentMethod(pm.id as "sslcommerz" | "bkash" | "nagad" | "cod")}
                       className={`flex flex-col items-center justify-center p-4 border rounded-xl transition-all text-sm font-semibold ${
                         paymentMethod === pm.id
                           ? pm.color
@@ -554,7 +567,7 @@ export default function CheckoutPage() {
                   </span>
                   {item.variantAttributes && Object.keys(item.variantAttributes).length > 0 && (
                     <span className="text-xs text-zinc-400 mt-0.5">
-                      {Object.entries(item.variantAttributes).map(([k, v]) => `${v}`).join(' / ')}
+                      {Object.entries(item.variantAttributes).map(([, v]) => `${v}`).join(' / ')}
                     </span>
                   )}
                 </div>

@@ -1,4 +1,4 @@
-import { NestFactory, Reflector } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
   NestFastifyApplication,
@@ -19,8 +19,14 @@ async function bootstrap() {
 
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter(),
+    new FastifyAdapter({
+      // Trust the immediate 1st hop upstream reverse proxy (Nginx, Cloudflare, AWS ALB, Ingress).
+      // Prevents client-controlled X-Forwarded-For header spoofing while correctly resolving real client IP.
+      trustProxy: 1,
+    }),
   );
+
+  const config = app.get(ConfigService);
 
   // ── Security headers (Helmet) ───────────────────────────────────────────
   await app.register(helmet, {
@@ -34,27 +40,21 @@ async function bootstrap() {
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
         imgSrc: ["'self'", 'data:', 'https:'],
-        connectSrc: [
-          "'self'",
-          process.env.FRONTEND_URL ?? 'http://localhost:3000',
-        ],
+        connectSrc: ["'self'", config.frontendUrl],
       },
     },
   });
 
   // ── Cookie plugin (required for httpOnly auth cookies) ──────────────────
   await app.register(cookie, {
-    secret:
-      process.env.COOKIE_SECRET ??
-      process.env.AUTH_JWT_SECRET ??
-      'cookie-secret',
+    secret: config.cookieSecret,
   });
 
   // ── File uploads ────────────────────────────────────────────────────────
   await app.register(multipart, {
     limits: {
-      fileSize: 2 * 1024 * 1024, // 2 MB per file
-      files: 1, // max 1 file per request
+      fileSize: 2 * 1024 * 1024, // 2 MB per file limit
+      files: 5, // max 5 files per request (aligned with FastifyFileUploadInterceptor)
       fields: 20, // max 20 non-file fields
     },
   });
@@ -65,23 +65,27 @@ async function bootstrap() {
     prefix: '/public/',
   });
 
-  const config = app.get(ConfigService);
-
   // ── CORS — only allow the configured frontend origin ────────────────────
-  const allowedOrigin = process.env.FRONTEND_URL ?? 'http://localhost:3000';
   app.enableCors({
-    origin: allowedOrigin,
+    origin: config.frontendUrl,
     credentials: true, // Required for httpOnly cookies
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   // ── Global prefix + pipes ───────────────────────────────────────────────
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', {
+    exclude: [
+      'metrics',
+      'api/v1/metrics',
+      'health/metrics',
+      'api/v1/health/metrics',
+    ],
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,            // strip unknown fields
+      whitelist: true, // strip unknown fields
       forbidNonWhitelisted: true, // AND reject the request if any are present
       transform: true,
     }),
@@ -90,7 +94,15 @@ async function bootstrap() {
   app.useGlobalInterceptors(new TransformInterceptor());
   app.useGlobalFilters(new AllExceptionsFilter());
 
+  // Graceful shutdown hooks: ensures SIGTERM/SIGINT drains connections and runs onModuleDestroy
+  app.enableShutdownHooks();
+
   await app.listen(config.port, '0.0.0.0');
   logger.log(`🚀 Server running on http://localhost:${config.port}/api/v1`);
 }
-bootstrap();
+
+bootstrap().catch((err: Error) => {
+  const logger = new Logger('Bootstrap');
+  logger.error(`Fatal application startup failure: ${err.message}`);
+  process.exit(1);
+});

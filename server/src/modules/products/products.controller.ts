@@ -27,7 +27,7 @@ export class ProductsController {
   constructor(
     private readonly productsService: ProductsService,
     private readonly storageService: StorageService,
-  ) { }
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -43,19 +43,57 @@ export class ProductsController {
       const stockRaw = parsedBody.stock;
       const price = Number(priceRaw);
       const stock = Number(stockRaw);
-      const description = parsedBody.description ? String(parsedBody.description) : undefined;
-      const categoryId = parsedBody.categoryId ? String(parsedBody.categoryId) : undefined;
+      const description = parsedBody.description
+        ? String(parsedBody.description)
+        : undefined;
+      const categoryId = parsedBody.categoryId
+        ? String(parsedBody.categoryId)
+        : undefined;
       const unit = parsedBody.unit ? String(parsedBody.unit) : undefined;
+      const variants =
+        parsedBody.variants !== undefined
+          ? typeof parsedBody.variants === 'string'
+            ? parsedBody.variants
+            : JSON.stringify(parsedBody.variants)
+          : undefined;
+      const status =
+        parsedBody.status !== undefined ? String(parsedBody.status) : undefined;
 
       // Validate BEFORE uploading to avoid wasted storage on bad input
       if (!name) {
-        return res.status(400).send({ success: false, message: 'Product name is required' });
+        return res
+          .status(400)
+          .send({ success: false, message: 'Product name is required' });
       }
-      if (priceRaw === undefined || priceRaw === '' || isNaN(price) || price < 0) {
-        return res.status(400).send({ success: false, message: 'Valid price is required' });
+      if (
+        priceRaw === undefined ||
+        priceRaw === '' ||
+        isNaN(price) ||
+        price < 0
+      ) {
+        return res
+          .status(400)
+          .send({ success: false, message: 'Valid price is required' });
       }
-      if (stockRaw === undefined || stockRaw === '' || isNaN(stock) || stock < 0) {
-        return res.status(400).send({ success: false, message: 'Valid stock quantity is required' });
+      if (
+        stockRaw === undefined ||
+        stockRaw === '' ||
+        isNaN(stock) ||
+        stock < 0
+      ) {
+        return res.status(400).send({
+          success: false,
+          message: 'Valid stock quantity is required',
+        });
+      }
+      if (
+        status !== undefined &&
+        !['active', 'draft', 'archived'].includes(status)
+      ) {
+        return res.status(400).send({
+          success: false,
+          message: 'Invalid product status',
+        });
       }
 
       let imageUrl: string | undefined;
@@ -68,7 +106,7 @@ export class ProductsController {
       }
 
       const product = await this.productsService.create(
-        { name, price, stock, description, categoryId, unit },
+        { name, price, stock, description, categoryId, unit, variants, status },
         imageUrl,
       );
 
@@ -86,7 +124,10 @@ export class ProductsController {
   }
 
   @Get()
-  async findAll(@Query() query: FindProductsQueryDto, @Res() res: FastifyReply) {
+  async findAll(
+    @Query() query: FindProductsQueryDto,
+    @Res() res: FastifyReply,
+  ) {
     const { data, meta } = await this.productsService.findAll(query);
     return res.send({
       success: true,
@@ -97,7 +138,10 @@ export class ProductsController {
   }
 
   @Get(':id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string, @Res() res: FastifyReply) {
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: FastifyReply,
+  ) {
     const product = await this.productsService.findOne(id);
     if (!product) {
       return res
@@ -123,18 +167,73 @@ export class ProductsController {
     try {
       const product = await this.productsService.findOne(id);
       if (!product) {
-        return res.status(404).send({ success: false, message: 'Product not found' });
+        return res
+          .status(404)
+          .send({ success: false, message: 'Product not found' });
       }
 
       const parsedBody = (req as any).parsedBody || {};
       const uploadedFile = (req as any).uploadedFile;
 
-      const name = parsedBody.name ? String(parsedBody.name) : undefined;
-      const price = parsedBody.price !== undefined ? Number(parsedBody.price) : undefined;
-      const stock = parsedBody.stock !== undefined ? Number(parsedBody.stock) : undefined;
-      const description = parsedBody.description !== undefined ? String(parsedBody.description) : undefined;
-      const categoryId = parsedBody.categoryId !== undefined ? String(parsedBody.categoryId) : undefined;
-      const unit = parsedBody.unit !== undefined ? String(parsedBody.unit) : undefined;
+      const name =
+        parsedBody.name !== undefined
+          ? String(parsedBody.name).trim()
+          : undefined;
+      if (name !== undefined && name === '') {
+        return res
+          .status(400)
+          .send({ success: false, message: 'Product name cannot be empty' });
+      }
+
+      let price: number | undefined;
+      if (parsedBody.price !== undefined && parsedBody.price !== '') {
+        price = Number(parsedBody.price);
+        if (isNaN(price) || price < 0) {
+          return res
+            .status(400)
+            .send({ success: false, message: 'Valid price is required' });
+        }
+      }
+
+      let stock: number | undefined;
+      if (parsedBody.stock !== undefined && parsedBody.stock !== '') {
+        stock = Number(parsedBody.stock);
+        if (isNaN(stock) || stock < 0) {
+          return res.status(400).send({
+            success: false,
+            message: 'Valid stock quantity is required',
+          });
+        }
+      }
+
+      const status =
+        parsedBody.status !== undefined ? String(parsedBody.status) : undefined;
+      if (
+        status !== undefined &&
+        !['active', 'draft', 'archived'].includes(status)
+      ) {
+        return res.status(400).send({
+          success: false,
+          message: 'Invalid product status',
+        });
+      }
+
+      const description =
+        parsedBody.description !== undefined
+          ? String(parsedBody.description)
+          : undefined;
+      const categoryId =
+        parsedBody.categoryId !== undefined
+          ? String(parsedBody.categoryId)
+          : undefined;
+      const unit =
+        parsedBody.unit !== undefined ? String(parsedBody.unit) : undefined;
+      const variants =
+        parsedBody.variants !== undefined
+          ? typeof parsedBody.variants === 'string'
+            ? parsedBody.variants
+            : JSON.stringify(parsedBody.variants)
+          : undefined;
 
       let imageUrl: string | undefined;
       if (uploadedFile) {
@@ -147,7 +246,7 @@ export class ProductsController {
 
       const updatedProduct = await this.productsService.update(
         id,
-        { name, price, stock, description, categoryId, unit },
+        { name, price, stock, description, categoryId, unit, variants, status },
         imageUrl,
       );
 
@@ -164,11 +263,13 @@ export class ProductsController {
     }
   }
 
-
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
-  async remove(@Param('id', ParseUUIDPipe) id: string, @Res() res: FastifyReply) {
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: FastifyReply,
+  ) {
     const product = await this.productsService.findOne(id);
     if (!product) {
       return res

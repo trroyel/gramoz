@@ -34,5 +34,11 @@ export const refundsApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
+  },
+
+  reconcileRefund: (id: string) => {
+    return httpClient.request<ApiResponse<Refund>>(`/refunds/admin/${id}/reconcile`, {
+      method: 'POST',
+    });
   }
 };

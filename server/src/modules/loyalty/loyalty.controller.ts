@@ -10,11 +10,11 @@ import { Roles } from '../auth/decorators/roles.decorator';
 export class LoyaltyController {
   constructor(
     private readonly loyaltyService: LoyaltyService,
-    private readonly settingsService: SettingsService
+    private readonly settingsService: SettingsService,
   ) {}
 
   @Get('balance')
-  @Roles('customer')
+  @Roles('customer', 'admin', 'super_admin')
   async getMyBalance(@Request() req: any) {
     const balance = await this.loyaltyService.getBalance(req.user.id);
     const ratio = await this.settingsService.getPointsToCurrencyRatio();
@@ -23,9 +23,10 @@ export class LoyaltyController {
   }
 
   @Get('history')
-  @Roles('customer')
+  @Roles('customer', 'admin', 'super_admin')
   async getMyHistory(@Request() req: any, @Query('page') page: string) {
-    const data = await this.loyaltyService.getHistory(req.user.id, parseInt(page) || 1);
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const data = await this.loyaltyService.getHistory(req.user.id, pageNum);
     return { success: true, data };
   }
 }

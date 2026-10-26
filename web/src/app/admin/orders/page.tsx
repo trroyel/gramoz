@@ -58,8 +58,9 @@ export default function AdminOrdersPage() {
       const response = await ordersApi.getAdminOrder(orderId);
       if (response.success && response.data) {
         setSelectedOrder(response.data);
-        if (response.data.consignmentId) {
-          courierApi.trackPackage(response.data.consignmentId)
+        const consignmentId = response.data?.consignmentId;
+        if (typeof consignmentId === 'string' && consignmentId) {
+          courierApi.trackPackage(consignmentId)
             .then(res => {
               if (res.success && res.currentStatus) {
                 setCourierStatus(res.currentStatus);

@@ -8,6 +8,8 @@ import { UsersStore } from '@modules/users/users.store';
 export interface JwtPayload {
   sub: string;
   email: string;
+  role?: string;
+  token_type?: string;
 }
 
 /**
@@ -40,6 +42,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
+    if (payload.token_type !== 'access') {
+      throw new UnauthorizedException(
+        'Invalid or missing token type; access token required',
+      );
+    }
+
     const user = await this.usersStore.findById(payload.sub);
 
     if (!user || user.status !== 'active') {

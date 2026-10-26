@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import {
   Controller,
   Get,
@@ -8,6 +10,7 @@ import {
   Patch,
   ParseUUIDPipe,
   Res,
+  Headers,
   ForbiddenException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
@@ -35,12 +38,23 @@ export class OrdersController {
   // 5 per minute per IP is enough for any real user; stops abuse and double-submit spam.
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @Post('checkout')
-  async checkout(@CurrentUser() user: User, @Body() dto: CreateOrderDto) {
+  async checkout(
+    @CurrentUser() user: User,
+    @Body() dto: CreateOrderDto,
+    @Headers('idempotency-key') idempotencyKeyHeader?: string,
+  ) {
     if (!user.isPhoneVerified) {
-      throw new ForbiddenException('Phone number verification is required to place an order.');
+      throw new ForbiddenException(
+        'Phone number verification is required to place an order.',
+      );
     }
-    
-    const order = await this.ordersService.createOrderFromCart(user.id, dto);
+
+    const idempotencyKey = idempotencyKeyHeader || dto.idempotencyKey;
+    const order = await this.ordersService.createOrderFromCart(
+      user.id,
+      dto,
+      idempotencyKey,
+    );
     return {
       success: true,
       message: 'Order created successfully',
@@ -55,7 +69,10 @@ export class OrdersController {
   }
 
   @Get(':id')
-  async getOrderDetails(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+  async getOrderDetails(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     const orderDetails = await this.ordersService.getOrderDetails(user.id, id);
     return orderDetails;
   }
@@ -71,8 +88,22 @@ export class OrdersController {
     await this.invoicesService.generateInvoicePdf(id, res);
   }
 
+  @Post(':id/cancel')
+  async cancelOrder(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('reason') reason?: string,
+  ) {
+    const order = await this.ordersService.cancelOrder(user.id, id, reason);
+    return {
+      success: true,
+      message: 'Order cancelled successfully',
+      data: order,
+    };
+  }
+
   @Get('admin/all')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(...PLATFORM_ROLES)
   async getAllOrdersAsAdmin() {
     const orders = await this.ordersService.getAllOrdersAsAdmin();
@@ -80,7 +111,7 @@ export class OrdersController {
   }
 
   @Get('admin/:id')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(...PLATFORM_ROLES)
   async getOrderDetailsAsAdmin(@Param('id', ParseUUIDPipe) id: string) {
     const orderDetails = await this.ordersService.getOrderDetailsAsAdmin(id);
@@ -88,7 +119,7 @@ export class OrdersController {
   }
 
   @Get('admin/:id/invoice')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(...PLATFORM_ROLES)
   async downloadAdminInvoice(
     @Param('id', ParseUUIDPipe) id: string,
@@ -98,7 +129,7 @@ export class OrdersController {
   }
 
   @Patch('admin/:id/status')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(...PLATFORM_ROLES)
   async updateOrderStatus(
     @Param('id', ParseUUIDPipe) id: string,

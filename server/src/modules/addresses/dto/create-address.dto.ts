@@ -1,4 +1,10 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsBoolean,
+  IsUUID,
+} from 'class-validator';
 
 export class CreateAddressDto {
   @IsString()

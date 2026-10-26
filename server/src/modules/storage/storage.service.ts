@@ -1,27 +1,24 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { Readable } from 'stream';
-import { extname } from 'path';
 import { randomUUID } from 'crypto';
+import * as path from 'path';
+import * as fs from 'fs';
+
+const MIME_EXTENSION_MAP: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+};
 
 /**
- * Cloudflare R2 Upload Service
+ * Cloudflare R2 / S3-Compatible Storage Service
  *
- * R2 is S3-compatible, so we use the AWS SDK with a custom endpoint.
- *
- * Required env vars:
- *   R2_ACCOUNT_ID     — Cloudflare account ID (from dashboard URL)
- *   R2_ACCESS_KEY_ID  — R2 API token Access Key ID
- *   R2_SECRET_ACCESS_KEY — R2 API token Secret Access Key
- *   R2_BUCKET         — name of your R2 bucket (e.g. "gramoz-media")
- *   R2_PUBLIC_URL     — public URL prefix (e.g. https://media.gramoz.com)
- *
- * How to get credentials:
- *   1. Go to Cloudflare Dashboard → R2 → Manage R2 API Tokens
- *   2. Create token with "Object Read & Write" permission on your bucket
- *   3. Copy Account ID from the R2 overview page
+ * Provides secure image uploads, path-traversal prevention, strict MIME-to-extension
+ * mapping, and automated deletion across both Cloudflare R2 and local development fallback.
  */
 @Injectable()
 export class StorageService {
@@ -40,7 +37,9 @@ export class StorageService {
     );
 
     this.bucket = this.configService.get<string>('R2_BUCKET', 'gramoz-media');
-    this.publicUrl = this.configService.get<string>('R2_PUBLIC_URL', '');
+    this.publicUrl = this.configService
+      .get<string>('R2_PUBLIC_URL', '')
+      .replace(/\/+$/, '');
 
     this.isConfigured = Boolean(accountId && accessKeyId && secretAccessKey);
 
@@ -59,16 +58,27 @@ export class StorageService {
   }
 
   /**
-   * Upload a file stream to R2 and return the public URL.
-   * Falls back to local disk if R2 is not configured (dev environment).
+   * Upload a file stream to Cloudflare R2 or local disk storage.
+   * Derives extension strictly from validated MIME type to prevent extension spoofing.
    */
   async upload(
     fileStream: Readable,
     originalFilename: string,
     mimeType: string,
+    folder = 'products',
   ): Promise<string> {
-    const ext = extname(originalFilename).toLowerCase();
-    const key = `products/${randomUUID()}${ext}`;
+    const normalizedMime = mimeType?.toLowerCase().trim();
+    const safeExt = MIME_EXTENSION_MAP[normalizedMime];
+
+    if (!safeExt) {
+      throw new BadRequestException(
+        `Unsupported file type: ${mimeType}. Only JPEG, PNG, and WebP images are allowed.`,
+      );
+    }
+
+    // Sanitize folder path against path traversal (reject .., slashes, backslashes)
+    const sanitizedFolder = folder.replace(/[^a-zA-Z0-9_-]/g, '') || 'products';
+    const key = `${sanitizedFolder}/${randomUUID()}${safeExt}`;
 
     if (!this.isConfigured || !this.s3) {
       return this.saveLocally(fileStream, key);
@@ -80,8 +90,8 @@ export class StorageService {
         Bucket: this.bucket,
         Key: key,
         Body: fileStream,
-        ContentType: mimeType,
-        // Files are publicly readable via the custom domain
+        ContentType: normalizedMime,
+        ContentDisposition: 'inline',
         ACL: 'public-read',
       },
     });
@@ -92,26 +102,56 @@ export class StorageService {
     return url;
   }
 
-  /** Delete a previously uploaded file from R2 */
+  /**
+   * Deletes a previously uploaded file from Cloudflare R2 or local disk.
+   * Sanitizes against directory traversal attacks.
+   */
   async delete(fileUrl: string): Promise<void> {
-    if (!this.isConfigured || !this.s3) return;
+    if (!fileUrl || typeof fileUrl !== 'string') return;
 
-    // Extract the key from the full URL
-    const key = fileUrl.replace(`${this.publicUrl}/`, '');
-    await this.s3.send(
-      new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
-    );
-    this.logger.log(`Deleted from R2: ${key}`);
+    // Prevent path traversal attempts
+    if (fileUrl.includes('..')) {
+      throw new BadRequestException(
+        'Invalid file URL: path traversal detected',
+      );
+    }
+
+    if (!this.isConfigured || !this.s3) {
+      await this.deleteLocally(fileUrl);
+      return;
+    }
+
+    // Extract object key from public URL
+    let key = fileUrl;
+    if (this.publicUrl && fileUrl.startsWith(this.publicUrl)) {
+      key = fileUrl.slice(this.publicUrl.length).replace(/^\/+/, '');
+    } else {
+      // Handle generic absolute URLs: e.g. https://domain.com/folder/file.png
+      key = fileUrl.replace(/^https?:\/\/[^/]+\//, '');
+    }
+
+    try {
+      await this.s3.send(
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      this.logger.log(`Deleted from R2: ${key}`);
+    } catch (error) {
+      this.logger.error(`Failed to delete object from R2 (${key}):`, error);
+      throw error;
+    }
   }
 
-  /** Local disk fallback for development — saves to ./public/uploads */
+  /** Local disk fallback for development — saves to ./public/{key} */
   private async saveLocally(stream: Readable, key: string): Promise<string> {
-    const fs = await import('fs');
-    const path = await import('path');
-
     const dest = path.join(process.cwd(), 'public', key);
-    const dir = path.dirname(dest);
+    const publicRoot = path.join(process.cwd(), 'public');
 
+    // Ensure destination cannot escape ./public
+    if (!dest.startsWith(publicRoot)) {
+      throw new BadRequestException('Invalid destination path');
+    }
+
+    const dir = path.dirname(dest);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -126,5 +166,25 @@ export class StorageService {
     const localPath = `/public/${key}`;
     this.logger.warn(`Saved locally (R2 not configured): ${localPath}`);
     return localPath;
+  }
+
+  /** Local disk deletion to prevent disk space leaks in development */
+  private async deleteLocally(fileUrl: string): Promise<void> {
+    const relativeKey = fileUrl.replace(/^\/?public\//, '');
+    const dest = path.join(process.cwd(), 'public', relativeKey);
+    const publicRoot = path.join(process.cwd(), 'public');
+
+    if (!dest.startsWith(publicRoot)) {
+      throw new BadRequestException('Invalid local deletion path');
+    }
+
+    try {
+      if (fs.existsSync(dest)) {
+        await fs.promises.unlink(dest);
+        this.logger.log(`Deleted local file: ${dest}`);
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to delete local file ${dest}:`, err);
+    }
   }
 }

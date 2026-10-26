@@ -113,4 +113,24 @@ export class RefundsController {
       data: refund,
     });
   }
+
+  /**
+   * POST /refunds/admin/:id/reconcile
+   * Admin reconciles an in-flight refund with the external gateway via authoritative inquiry.
+   */
+  @Post('admin/:id/reconcile')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  async reconcileRefund(
+    @CurrentUser() admin: User,
+    @Param('id') id: string,
+    @Res() res: FastifyReply,
+  ) {
+    const refund = await this.refundsService.reconcileRefund(admin.id, id);
+    return res.send({
+      success: true,
+      message: 'Refund reconciliation executed successfully',
+      data: refund,
+    });
+  }
 }

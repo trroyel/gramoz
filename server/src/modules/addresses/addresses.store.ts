@@ -26,11 +26,14 @@ export class AddressesStore {
       .from(schema.addresses)
       .where(eq(schema.addresses.userId, userId))
       .limit(1);
-    
+
     return existingAddresses.length > 0;
   }
 
-  async createAddress(data: typeof schema.addresses.$inferInsert, tx?: any): Promise<schema.Address> {
+  async createAddress(
+    data: typeof schema.addresses.$inferInsert,
+    tx?: any,
+  ): Promise<schema.Address> {
     const executor = tx || this.db;
     const [newAddress] = await executor
       .insert(schema.addresses)
@@ -49,7 +52,11 @@ export class AddressesStore {
       .orderBy(schema.addresses.createdAt);
   }
 
-  async findOneByIdAndUserId(id: string, userId: string, tx?: any): Promise<schema.Address | null> {
+  async findOneByIdAndUserId(
+    id: string,
+    userId: string,
+    tx?: any,
+  ): Promise<schema.Address | null> {
     const executor = tx || this.db;
     const [address] = await executor
       .select()
@@ -61,7 +68,12 @@ export class AddressesStore {
     return address || null;
   }
 
-  async updateAddress(id: string, userId: string, data: Partial<typeof schema.addresses.$inferInsert>, tx?: any): Promise<schema.Address> {
+  async updateAddress(
+    id: string,
+    userId: string,
+    data: Partial<typeof schema.addresses.$inferInsert>,
+    tx?: any,
+  ): Promise<schema.Address> {
     const executor = tx || this.db;
     const [updatedAddress] = await executor
       .update(schema.addresses)
@@ -87,7 +99,10 @@ export class AddressesStore {
       .returning();
   }
 
-  async getFirstAddressIdByUserId(userId: string, tx?: any): Promise<string | null> {
+  async getFirstAddressIdByUserId(
+    userId: string,
+    tx?: any,
+  ): Promise<string | null> {
     const executor = tx || this.db;
     const [address] = await executor
       .select({ id: schema.addresses.id })

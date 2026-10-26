@@ -38,13 +38,19 @@ export class AuthController {
     private readonly config: ConfigService,
   ) {}
 
-  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @Throttle({
+    default: { ttl: 60_000, limit: 5 },
+    account: { ttl: 60_000, limit: 3 },
+  })
   @Post('register')
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
-  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @Throttle({
+    default: { ttl: 60_000, limit: 10 },
+    account: { ttl: 60_000, limit: 5 },
+  })
   @Post('login')
   async login(
     @Body() dto: LoginDto,
@@ -107,51 +113,79 @@ export class AuthController {
 
   /**
    * POST /auth/logout
-   * Clears the httpOnly auth cookies server-side.
+   * Clears httpOnly auth cookies and revokes server-side session in Redis.
    */
   @SkipThrottle()
   @Post('logout')
-  async logout(@Res({ passthrough: true }) res: FastifyReply) {
+  async logout(
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) res: FastifyReply,
+  ) {
+    const refreshToken = req.cookies?.['refresh_token'];
+    if (refreshToken) {
+      await this.authService.logout(refreshToken).catch(() => {});
+    }
     res.clearCookie('access_token', { path: '/' });
     res.clearCookie('refresh_token', { path: '/' });
     return { success: true, message: 'Logged out successfully' };
   }
 
-  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  @Throttle({
+    default: { ttl: 60_000, limit: 10 },
+    account: { ttl: 300_000, limit: 5 },
+  })
   @Post('verify-email')
   async verifyEmail(@Body() dto: VerifyEmailDto) {
     return this.authService.verifyEmail(dto);
   }
 
-  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  @Throttle({
+    default: { ttl: 60_000, limit: 5 },
+    account: { ttl: 600_000, limit: 3 },
+  })
   @Post('resend-verification')
   async resendVerification(@Body() dto: ResendVerificationDto) {
     return this.authService.resendVerification(dto.email);
   }
 
-  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  @Throttle({
+    default: { ttl: 60_000, limit: 5 },
+    account: { ttl: 900_000, limit: 3 },
+  })
   @Post('forgot-password')
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
   }
 
-  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  @Throttle({
+    default: { ttl: 60_000, limit: 5 },
+    account: { ttl: 300_000, limit: 5 },
+  })
   @Post('reset-password')
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
   }
 
-  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  @Throttle({
+    default: { ttl: 60_000, limit: 3 },
+    account: { ttl: 600_000, limit: 3 },
+  })
   @UseGuards(JwtAuthGuard)
   @Post('phone/send-otp')
   async sendPhoneOtp(@CurrentUser() user: User, @Body() dto: SendPhoneOtpDto) {
     return this.authService.sendPhoneOtp(user, dto.phone);
   }
 
-  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @Throttle({
+    default: { ttl: 60_000, limit: 10 },
+    account: { ttl: 300_000, limit: 5 },
+  })
   @UseGuards(JwtAuthGuard)
   @Post('phone/verify-otp')
-  async verifyPhoneOtp(@CurrentUser() user: User, @Body() dto: VerifyPhoneOtpDto) {
+  async verifyPhoneOtp(
+    @CurrentUser() user: User,
+    @Body() dto: VerifyPhoneOtpDto,
+  ) {
     return this.authService.verifyPhoneOtp(user, dto);
   }
 
@@ -233,9 +267,11 @@ export class AuthController {
     if (!storedState || !state || storedState !== state) {
       this.logger.warn(
         '[Google OAuth] State mismatch — possible CSRF attempt. ' +
-        `Expected: ${storedState ?? 'missing'}, Got: ${state ?? 'missing'}`,
+          `Expected: ${storedState ?? 'missing'}, Got: ${state ?? 'missing'}`,
       );
-      return redirect(`${this.config.frontendUrl}/login?error=oauth_state_mismatch`);
+      return redirect(
+        `${this.config.frontendUrl}/login?error=oauth_state_mismatch`,
+      );
     }
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -253,7 +289,7 @@ export class AuthController {
         }),
       });
 
-      const tokenData = (await tokenRes.json()) as any;
+      const tokenData = await tokenRes.json();
       if (!tokenData.access_token) {
         throw new Error('No access_token received from Google');
       }
@@ -263,7 +299,7 @@ export class AuthController {
         'https://www.googleapis.com/oauth2/v2/userinfo',
         { headers: { Authorization: `Bearer ${tokenData.access_token}` } },
       );
-      const profile = (await profileRes.json()) as any;
+      const profile = await profileRes.json();
 
       const { accessToken, refreshToken } =
         await this.authService.validateOAuthUser({
@@ -347,7 +383,9 @@ export class AuthController {
       this.logger.warn(
         '[Facebook OAuth] State mismatch — possible CSRF attempt.',
       );
-      return redirect(`${this.config.frontendUrl}/login?error=oauth_state_mismatch`);
+      return redirect(
+        `${this.config.frontendUrl}/login?error=oauth_state_mismatch`,
+      );
     }
 
     try {
@@ -361,8 +399,8 @@ export class AuthController {
       const tokenRes = await fetch(
         `https://graph.facebook.com/v19.0/oauth/access_token?${tokenParams.toString()}`,
       );
-      const tokenData = (await tokenRes.json()) as any;
-      
+      const tokenData = await tokenRes.json();
+
       if (!tokenData.access_token) {
         throw new Error('No access_token received from Facebook');
       }
@@ -371,10 +409,12 @@ export class AuthController {
       const profileRes = await fetch(
         `https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${tokenData.access_token}`,
       );
-      const profile = (await profileRes.json()) as any;
-      
+      const profile = await profileRes.json();
+
       if (!profile.email) {
-        throw new Error('Facebook account does not have an email associated or access was denied.');
+        throw new Error(
+          'Facebook account does not have an email associated or access was denied.',
+        );
       }
 
       const { accessToken, refreshToken } =

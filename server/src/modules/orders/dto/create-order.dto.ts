@@ -32,4 +32,8 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   deliveryMethod?: 'home' | 'branch';
+
+  @IsString()
+  @IsOptional()
+  idempotencyKey?: string;
 }

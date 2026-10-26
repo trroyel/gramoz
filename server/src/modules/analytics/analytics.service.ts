@@ -67,16 +67,19 @@ export class AnalyticsService {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
-      
+
       const found = dailyRevenueResult.rows.find((r: any) => {
         // Postgres DATE might return as Date object or string depending on driver
-        const rowDate = typeof r.date === 'string' ? r.date.split('T')[0] : r.date.toISOString().split('T')[0];
+        const rowDate =
+          typeof r.date === 'string'
+            ? r.date.split('T')[0]
+            : r.date.toISOString().split('T')[0];
         return rowDate === dateStr;
       });
 
       dailyRevenue.push({
         date: dateStr,
-        revenue: found ? parseFloat(found.revenue as string) : 0,
+        revenue: found ? parseFloat(found.revenue) : 0,
       });
     }
 
@@ -88,16 +91,16 @@ export class AnalyticsService {
         user: {
           columns: {
             fullName: true,
-          }
+          },
         },
         payments: {
           limit: 1,
-          orderBy: [desc(schema.payments.createdAt)]
-        }
-      }
+          orderBy: [desc(schema.payments.createdAt)],
+        },
+      },
     });
 
-    const formattedRecentOrders = recentOrders.map(order => ({
+    const formattedRecentOrders = recentOrders.map((order) => ({
       ...order,
       customerName: order.user?.fullName,
       payment: order.payments[0] || null,
@@ -105,9 +108,9 @@ export class AnalyticsService {
     }));
 
     return {
-      totalRevenue: parseFloat(totals?.total_revenue as string) || 0,
-      totalOrders: parseInt(totals?.total_orders as string, 10) || 0,
-      totalProducts: parseInt(productsCount?.count as string, 10) || 0,
+      totalRevenue: parseFloat(totals?.total_revenue) || 0,
+      totalOrders: parseInt(totals?.total_orders, 10) || 0,
+      totalProducts: parseInt(productsCount?.count, 10) || 0,
       lowStockProducts,
       dailyRevenue,
       recentOrders: formattedRecentOrders,

@@ -28,6 +28,7 @@ export default function AdminRefundsPage() {
   const [adminNotes, setAdminNotes] = useState("");
   const [gatewayRefundId, setGatewayRefundId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isReconciling, setIsReconciling] = useState<string | null>(null);
 
   const fetchRefunds = async () => {
     try {
@@ -35,7 +36,7 @@ export default function AdminRefundsPage() {
       if (res.success && res.data) {
         setRefunds(res.data);
       }
-    } catch (err: any) {
+    } catch {
       toast.error("Failed to load refunds");
     } finally {
       setIsLoading(false);
@@ -45,6 +46,22 @@ export default function AdminRefundsPage() {
   useEffect(() => {
     fetchRefunds();
   }, []);
+
+  const handleReconcile = async (id: string) => {
+    setIsReconciling(id);
+    try {
+      const res = await refundsApi.reconcileRefund(id);
+      if (res.success && res.data) {
+        toast.success(`Refund reconciled: ${res.data.status}`);
+        setRefunds(refunds.map(r => r.id === id ? res.data : r));
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to reconcile refund";
+      toast.error(message);
+    } finally {
+      setIsReconciling(null);
+    }
+  };
 
   const openActionModal = (refund: Refund, type: 'processed' | 'rejected') => {
     setSelectedRefund(refund);
@@ -71,8 +88,9 @@ export default function AdminRefundsPage() {
         setRefunds(refunds.map(r => r.id === selectedRefund.id ? { ...r, status: actionType, adminNotes, gatewayRefundId } : r));
         setSelectedRefund(null);
       }
-    } catch (err: any) {
-      toast.error(err.message || `Failed to ${actionType} refund`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `Failed to ${actionType} refund`;
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -142,6 +160,8 @@ export default function AdminRefundsPage() {
                     <TableCell>
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full capitalize
                         ${refund.status === 'processed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : ''}
+                        ${refund.status === 'processing' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : ''}
+                        ${refund.status === 'approved' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : ''}
                         ${refund.status === 'rejected' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : ''}
                         ${refund.status === 'requested' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : ''}
                       `}>
@@ -166,6 +186,18 @@ export default function AdminRefundsPage() {
                             onClick={() => openActionModal(refund, 'rejected')}
                           >
                             <XCircle className="w-4 h-4 mr-1" /> Reject
+                          </Button>
+                        </div>
+                      ) : refund.status === 'processing' ? (
+                        <div className="flex justify-end gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 border-amber-200"
+                            onClick={() => handleReconcile(refund.id)}
+                            disabled={isReconciling === refund.id}
+                          >
+                            <ArrowRightLeft className="w-4 h-4 mr-1" /> {isReconciling === refund.id ? 'Reconciling...' : 'Reconcile'}
                           </Button>
                         </div>
                       ) : (

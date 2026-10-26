@@ -19,9 +19,26 @@ export class CourierController {
   }
 
   @Post('calculate')
-  async calculateCharge(@Body() body: { zoneId: string; deliveryMethod: 'home' | 'branch'; weightKg?: number }, @Res() res: FastifyReply) {
+  async calculateCharge(
+    @Body()
+    body: {
+      zoneId: string;
+      deliveryMethod: 'home' | 'branch';
+      weightKg?: number;
+    },
+    @Res() res: FastifyReply,
+  ) {
     try {
-      const result = await this.courierService.calculateCharge(body.zoneId, body.deliveryMethod, body.weightKg);
+      if (!body || !body.zoneId) {
+        return res
+          .status(400)
+          .send({ success: false, message: 'zoneId is required' });
+      }
+      const result = await this.courierService.calculateCharge(
+        body.zoneId,
+        body.deliveryMethod,
+        body.weightKg,
+      );
       return res.send({ success: true, ...result });
     } catch (e: any) {
       return res.status(400).send({ success: false, message: e.message });

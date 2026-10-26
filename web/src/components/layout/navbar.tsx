@@ -140,6 +140,7 @@ export function Navbar() {
                 <Button 
                   variant="ghost" 
                   size="sm" 
+                  data-testid="user-dropdown-btn"
                   className="gap-2"
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 >
@@ -181,6 +182,7 @@ export function Navbar() {
                     </Link>
                     <div className="h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
                     <button 
+                      data-testid="logout-btn"
                       onClick={() => { setIsDropdownOpen(false); handleLogout(); }} 
                       className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
                     >

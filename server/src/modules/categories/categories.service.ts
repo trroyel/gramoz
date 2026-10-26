@@ -1,8 +1,8 @@
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import {
-  Injectable,
-  Inject,
-} from '@nestjs/common';
-import { EntityNotFoundError, EntityConflictError } from '../../common/errors/domain.errors';
+  EntityNotFoundError,
+  EntityConflictError,
+} from '../../common/errors/domain.errors';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { eq } from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
@@ -12,6 +12,8 @@ import { RedisService } from '@cache/redis.service';
 
 @Injectable()
 export class CategoriesService {
+  private readonly logger = new Logger(CategoriesService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: NodePgDatabase<typeof schema>,
     private readonly redisService: RedisService,
@@ -45,22 +47,40 @@ export class CategoriesService {
       .returning();
 
     // Invalidate the cache
-    await this.redisService.del('categories:all');
+    try {
+      await this.redisService.del('categories:all');
+    } catch (err: any) {
+      this.logger.warn(`Redis del failed for categories:all: ${err?.message}`);
+    }
 
     return category;
   }
 
   async findAll(): Promise<schema.Category[]> {
-    const cached = await this.redisService.get('categories:all');
-    if (cached) {
-      return JSON.parse(cached);
+    try {
+      const cached = await this.redisService.get('categories:all');
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Redis get failed for categories:all, falling back to DB: ${err?.message}`,
+      );
     }
 
     const categories = await this.db.select().from(schema.categories);
-    
+
     // Cache for 1 hour (3600 seconds)
-    await this.redisService.set('categories:all', JSON.stringify(categories), 3600);
-    
+    try {
+      await this.redisService.set(
+        'categories:all',
+        JSON.stringify(categories),
+        3600,
+      );
+    } catch (err: any) {
+      this.logger.warn(`Redis set failed for categories:all: ${err?.message}`);
+    }
+
     return categories;
   }
 
@@ -100,7 +120,11 @@ export class CategoriesService {
       .returning();
 
     // Invalidate the cache
-    await this.redisService.del('categories:all');
+    try {
+      await this.redisService.del('categories:all');
+    } catch (err: any) {
+      this.logger.warn(`Redis del failed for categories:all: ${err?.message}`);
+    }
 
     return updated;
   }
@@ -114,7 +138,11 @@ export class CategoriesService {
       .returning();
 
     // Invalidate the cache
-    await this.redisService.del('categories:all');
+    try {
+      await this.redisService.del('categories:all');
+    } catch (err: any) {
+      this.logger.warn(`Redis del failed for categories:all: ${err?.message}`);
+    }
 
     return deleted;
   }

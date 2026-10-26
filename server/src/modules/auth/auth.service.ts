@@ -7,13 +7,13 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
+import * as crypto from 'crypto';
 import { ConfigService } from '@config/config.service';
 import { RedisService } from '@cache/redis.service';
 import { UsersStore } from '@modules/users/users.store';
 import { MailService } from '../notifications/mail.service';
 import { SmsService } from '../notifications/sms.service';
 import { RegisterDto } from './dto/register.dto';
-import { SendPhoneOtpDto } from './dto/send-phone-otp.dto';
 import { VerifyPhoneOtpDto } from './dto/verify-phone-otp.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
@@ -51,15 +51,25 @@ export class AuthService {
     const passwordHash = await argon2.hash(dto.password);
 
     // Create user
-    const user = await this.usersStore.create({
-      email: dto.email,
-      passwordHash,
-      fullName: dto.fullName,
-      phone: dto.phone,
-      isEmailVerified: false,
-      isPhoneVerified: false,
-      status: 'active',
-    });
+    let user: User;
+    try {
+      user = await this.usersStore.create({
+        email: dto.email,
+        passwordHash,
+        fullName: dto.fullName,
+        phone: dto.phone,
+        isEmailVerified: false,
+        isPhoneVerified: false,
+        status: 'active',
+      });
+    } catch (err: unknown) {
+      const pgErr = err as { code?: string; cause?: { code?: string } };
+      const code = pgErr?.code || pgErr?.cause?.code;
+      if (code === '23505') {
+        throw new ConflictException('Email already registered');
+      }
+      throw err;
+    }
 
     // Generate verification code
     const code = this.redis.generateCode();
@@ -93,6 +103,10 @@ export class AuthService {
     }
 
     // Check password
+    if (!user.passwordHash) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     const isPasswordValid = await argon2.verify(
       user.passwordHash,
       dto.password,
@@ -274,9 +288,9 @@ export class AuthService {
     await this.redis.clearPhoneVerifyAttempts(dto.phone);
 
     // Update user
-    await this.usersStore.update(user.id, { 
-      phone: dto.phone, 
-      isPhoneVerified: true 
+    await this.usersStore.update(user.id, {
+      phone: dto.phone,
+      isPhoneVerified: true,
     });
 
     return {
@@ -323,10 +337,30 @@ export class AuthService {
       throw new BadRequestException('Reset code expired or invalid');
     }
 
+    const MAX_ATTEMPTS = 5;
+    const attempts = await this.redis.incrementResetAttempts(dto.email);
+
+    if (attempts > MAX_ATTEMPTS) {
+      await this.redis.deleteResetCode(dto.email);
+      await this.redis.clearResetAttempts(dto.email);
+      throw new BadRequestException(
+        'Too many failed attempts. Your reset code has been invalidated — please request a new one.',
+      );
+    }
+
     // Verify code
     if (storedCode !== dto.code) {
-      throw new BadRequestException('Invalid reset code');
+      const remaining = MAX_ATTEMPTS - attempts;
+      throw new BadRequestException(
+        remaining > 0
+          ? `Invalid reset code. ${remaining} attempt(s) remaining.`
+          : 'Invalid reset code. No attempts remaining — please request a new code.',
+      );
     }
+
+    // Code is correct — clear both code and attempt counter
+    await this.redis.deleteResetCode(dto.email);
+    await this.redis.clearResetAttempts(dto.email);
 
     // Find user
     const user = await this.usersStore.findByEmail(dto.email);
@@ -340,9 +374,6 @@ export class AuthService {
     // Update password
     await this.usersStore.update(user.id, { passwordHash });
 
-    // Delete reset code
-    await this.redis.deleteResetCode(dto.email);
-
     // Delete session (force re-login)
     await this.redis.deleteSession(user.id);
 
@@ -354,6 +385,7 @@ export class AuthService {
     };
   }
 
+  /* eslint-disable-next-line @typescript-eslint/require-await */
   async getMe(user: User) {
     return {
       success: true,
@@ -392,13 +424,13 @@ export class AuthService {
       user = await this.usersStore.findByEmail(profile.email);
       if (user) {
         // Link the OAuth account to the existing local account
-          await this.usersStore.update(user.id, {
+        await this.usersStore.update(user.id, {
           provider: profile.provider,
           providerId: profile.id,
           avatarUrl: profile.picture || user.avatarUrl,
           isEmailVerified: true,
         });
-        user = (await this.usersStore.findById(user.id)) as User;
+        user = await this.usersStore.findById(user.id);
       }
     }
 
@@ -427,7 +459,7 @@ export class AuthService {
       refreshToken,
       this.config.jwtRefreshExpiresIn,
     );
-    await this.usersStore.update(user.id, { 
+    await this.usersStore.update(user.id, {
       lastLoginAt: new Date(),
       avatarUrl: profile.picture || user.avatarUrl,
     });
@@ -435,18 +467,30 @@ export class AuthService {
     return { user, accessToken, refreshToken };
   }
 
+  /* eslint-disable-next-line @typescript-eslint/require-await */
   private async generateTokens(
     user: User,
   ): Promise<{ accessToken: string; refreshToken: string }> {
-    const payload = {
+    const basePayload = {
       sub: user.id,
       email: user.email,
+      role: user.role,
     };
 
-    const accessToken = this.jwtService.sign(payload);
-    const refreshToken = this.jwtService.sign(payload, {
-      expiresIn: this.config.jwtRefreshExpiresIn as any,
+    const accessToken = this.jwtService.sign({
+      ...basePayload,
+      token_type: 'access',
     });
+    const refreshToken = this.jwtService.sign(
+      {
+        ...basePayload,
+        token_type: 'refresh',
+        jti: crypto.randomUUID(),
+      },
+      {
+        expiresIn: this.config.jwtRefreshExpiresIn as `${number}d`,
+      },
+    );
 
     return { accessToken, refreshToken };
   }
@@ -458,41 +502,88 @@ export class AuthService {
 
     try {
       // Verify token signature and expiration
-      const payload = this.jwtService.verify(oldRefreshToken);
+      const payload = this.jwtService.verify<{
+        sub: string;
+        token_type?: string;
+      }>(oldRefreshToken);
+      if (payload.token_type !== 'refresh') {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
       const userId = payload.sub;
 
-      // Check if session exists in Redis and matches
-      const sessionToken = await this.redis.getSession(userId);
-      if (!sessionToken || sessionToken !== oldRefreshToken) {
-        throw new UnauthorizedException('Invalid or revoked refresh token');
-      }
-
-      // Find user
-      const user = await this.usersStore.findById(userId);
+      // Find user — authoritative DB read (skipCache): token rotation must never mint a new
+      // pair from a stale cached role/status after suspension or demotion.
+      const user = await this.usersStore.findById(userId, { skipCache: true });
       if (!user || user.status !== 'active') {
         throw new UnauthorizedException('User inactive or not found');
       }
 
       // Generate new tokens
-      const { accessToken, refreshToken } = await this.generateTokens(user);
+      const { accessToken, refreshToken: newRefreshToken } =
+        await this.generateTokens(user);
 
-      // Update session in Redis
-      await this.redis.setSession(
+      // Atomic Compare-And-Swap (CAS) in Redis:
+      // Replaces oldRefreshToken with newRefreshToken iff oldRefreshToken is still the active session.
+      // Replayed tokens or concurrent requests racing on the same oldRefreshToken will fail CAS.
+      const rotated = await this.redis.rotateSession(
         user.id,
-        refreshToken,
+        oldRefreshToken,
+        newRefreshToken,
         this.config.jwtRefreshExpiresIn,
       );
+
+      if (!rotated) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
 
       return {
         success: true,
         message: 'Token refreshed successfully',
         data: {
           accessToken,
-          refreshToken,
+          refreshToken: newRefreshToken,
         },
       };
-    } catch (e) {
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedException) {
+        throw err;
+      }
       throw new UnauthorizedException('Invalid refresh token');
     }
+  }
+
+  async revokeSessionByToken(token?: string): Promise<void> {
+    if (!token) return;
+    try {
+      const payload = this.jwtService.verify<{
+        sub?: string;
+        token_type?: string;
+      }>(token);
+      if (!payload?.sub) return;
+      if (payload.token_type !== 'refresh') {
+        return; // Prevent access tokens or untyped tokens from revoking refresh sessions
+      }
+      // Atomic Compare-And-Delete (CAD): only deletes if the session still holds this exact token.
+      // Prevents stale tokens from deleting newer rotated sessions.
+      await this.redis.compareAndDeleteSession(payload.sub, token);
+    } catch {
+      // Ignored: Token may be expired, malformed, or forged signature
+    }
+  }
+
+  async logout(
+    userIdOrToken?: string,
+  ): Promise<{ success: boolean; message: string }> {
+    if (userIdOrToken) {
+      if (userIdOrToken.includes('.')) {
+        await this.revokeSessionByToken(userIdOrToken);
+      } else {
+        await this.redis.deleteSession(userIdOrToken);
+      }
+    }
+    return {
+      success: true,
+      message: 'Logged out successfully',
+    };
   }
 }

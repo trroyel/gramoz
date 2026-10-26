@@ -16,7 +16,7 @@ export class MailService {
   private readonly logger = new Logger(MailService.name);
 
   constructor(private readonly config: ConfigService) {
-    this.resend = new Resend(this.config.emailApiKey);
+    this.resend = new Resend(this.config.emailApiKey || 're_mock_dev_key');
   }
 
   async sendVerificationEmail(
@@ -131,6 +131,7 @@ export class MailService {
         `Failed to send abandoned cart email to ${email}:`,
         error,
       );
+      throw error;
     }
   }
 }

@@ -9,7 +9,11 @@ export const roleEnum = pgEnum('role', [
 ]);
 
 // Explicit enum prevents silent typos ('ACTIVE' vs 'active') from bypassing auth checks
-export const userStatusEnum = pgEnum('user_status', ['active', 'suspended', 'deleted']);
+export const userStatusEnum = pgEnum('user_status', [
+  'active',
+  'suspended',
+  'deleted',
+]);
 
 export const Role = {
   SUPER_ADMIN: 'super_admin',
@@ -18,7 +22,7 @@ export const Role = {
   MANAGER: 'manager',
   CUSTOMER: 'customer',
 } as const;
-export type Role = typeof Role[keyof typeof Role];
+export type Role = (typeof Role)[keyof typeof Role];
 
 export const PLATFORM_ROLES = ['super_admin', 'admin', 'support'] as const;
 
@@ -50,12 +54,16 @@ export const paymentStatusEnum = pgEnum('payment_status', [
 
 export const transactionTypeEnum = pgEnum('transaction_type', ['in', 'out']);
 
-export const reviewStatusEnum = pgEnum('review_status', ['pending', 'approved', 'rejected']);
+export const reviewStatusEnum = pgEnum('review_status', [
+  'pending',
+  'approved',
+  'rejected',
+]);
 
 export const pointTransactionTypeEnum = pgEnum('point_transaction_type', [
   'earned_review_text',
   'earned_review_media',
   'spent_checkout',
   'expired',
-  'admin_adjustment'
+  'admin_adjustment',
 ]);

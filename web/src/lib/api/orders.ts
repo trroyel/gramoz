@@ -2,9 +2,25 @@ import { HttpClient, API_BASE_URL } from '../http-clients';
 import { ApiResponse, Order } from '@/types';
 
 class OrdersApi extends HttpClient {
-  async checkout(payload: { addressLine1: string; city: string; phone: string; promoCode?: string | null; usePoints?: boolean; latitude?: string; longitude?: string; zoneId?: string; deliveryMethod?: 'home' | 'branch' }): Promise<ApiResponse<Order>> {
+  async checkout(payload: {
+    addressLine1: string;
+    city: string;
+    phone: string;
+    promoCode?: string | null;
+    usePoints?: boolean;
+    latitude?: string;
+    longitude?: string;
+    zoneId?: string;
+    deliveryMethod?: 'home' | 'branch';
+    idempotencyKey?: string;
+  }): Promise<ApiResponse<Order>> {
+    const headers: Record<string, string> = {};
+    if (payload.idempotencyKey) {
+      headers['Idempotency-Key'] = payload.idempotencyKey;
+    }
     return this.request<ApiResponse<Order>>('/orders/checkout', {
       method: 'POST',
+      headers,
       body: JSON.stringify(payload),
     });
   }
@@ -17,20 +33,27 @@ class OrdersApi extends HttpClient {
     return this.request<ApiResponse<Order>>(`/orders/${id}`);
   }
 
-  async getAllAsAdmin(): Promise<ApiResponse<any[]>> {
-    return this.request<ApiResponse<any[]>>('/orders/admin/all', {
+  async cancelOrder(id: string, reason?: string): Promise<ApiResponse<Order>> {
+    return this.request<ApiResponse<Order>>(`/orders/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async getAllAsAdmin(): Promise<ApiResponse<Record<string, any>[]>> {
+    return this.request<ApiResponse<Record<string, any>[]>>('/orders/admin/all', {
       method: 'GET',
     });
   }
 
-  async getAdminOrder(id: string): Promise<ApiResponse<any>> {
-    return this.request<ApiResponse<any>>(`/orders/admin/${id}`, {
+  async getAdminOrder(id: string): Promise<ApiResponse<Record<string, any>>> {
+    return this.request<ApiResponse<Record<string, any>>>(`/orders/admin/${id}`, {
       method: 'GET',
     });
   }
 
-  async updateStatus(id: string, status: string): Promise<ApiResponse<any>> {
-    return this.request<ApiResponse<any>>(`/orders/admin/${id}/status`, {
+  async updateStatus(id: string, status: string): Promise<ApiResponse<Record<string, any>>> {
+    return this.request<ApiResponse<Record<string, any>>>(`/orders/admin/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     });

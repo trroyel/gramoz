@@ -1,11 +1,17 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 
 import { ConfigModule } from '@config/config.module';
 import { DatabaseModule } from '@database/database.module';
 import { RedisModule } from '@cache/redis.module';
+import { RedisService } from '@cache/redis.service';
+import { ThrottlerStorageRedisService } from '@cache/throttler-storage-redis.service';
+import {
+  AppThrottlerGuard,
+  normalizeAccountIdentifier,
+} from './common/guards/app-throttler.guard';
 import { AuthModule } from '@modules/auth/auth.module';
 import { UserModule } from '@modules/users/user.module';
 import { ProductsModule } from '@modules/products/products.module';
@@ -27,15 +33,32 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 
 @Module({
   imports: [
-    // Global rate limiter — 60 requests per 60 seconds per IP by default.
-    // Auth routes override this with tighter limits via @Throttle() decorators.
-    ThrottlerModule.forRoot([
-      {
-        name: 'default',
-        ttl: 60_000,
-        limit: 60,
-      },
-    ]),
+    // Global and endpoint-specific rate limiter:
+    // - 'default': IP-based counter (60 req/min global default)
+    // - 'account': Normalized account identifier counter (prevents targeted brute-force)
+    // Distributed state is synchronized across instances via Redis with in-memory fail-policy fallback.
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule, RedisModule],
+      inject: [RedisService],
+      useFactory: (redis: RedisService) => ({
+        throttlers: [
+          {
+            name: 'default',
+            ttl: 60_000,
+            limit: 60,
+          },
+          {
+            name: 'account',
+            ttl: 60_000,
+            limit: 5,
+            getTracker: (req) => {
+              return normalizeAccountIdentifier(req?.body) || 'anonymous';
+            },
+          },
+        ],
+        storage: new ThrottlerStorageRedisService(redis.getClient()),
+      }),
+    }),
     ScheduleModule.forRoot(),
     ConfigModule,
     DatabaseModule,
@@ -61,8 +84,8 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
   ],
   controllers: [],
   providers: [
-    // Apply throttler globally to every route
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Apply production throttler guard globally to every route
+    { provide: APP_GUARD, useClass: AppThrottlerGuard },
   ],
 })
 export class AppModule {}

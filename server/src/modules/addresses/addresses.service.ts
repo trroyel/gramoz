@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { EntityNotFoundError, InvalidOperationError } from '../../common/errors/domain.errors';
+import {
+  EntityNotFoundError,
+  InvalidOperationError,
+} from '../../common/errors/domain.errors';
 import * as schema from '@database/schema';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
@@ -9,7 +12,10 @@ import { AddressesStore } from './addresses.store';
 export class AddressesService {
   constructor(private readonly addressesStore: AddressesStore) {}
 
-  async create(userId: string, createAddressDto: CreateAddressDto): Promise<schema.Address> {
+  async create(
+    userId: string,
+    createAddressDto: CreateAddressDto,
+  ): Promise<schema.Address> {
     return await this.addressesStore.runTransaction(async (tx) => {
       // If setting as default, unset others first
       if (createAddressDto.isDefault) {
@@ -17,17 +23,23 @@ export class AddressesService {
       }
 
       // If this is the user's first address, force it to be default
-      const hasAddresses = await this.addressesStore.checkHasAddresses(userId, tx);
+      const hasAddresses = await this.addressesStore.checkHasAddresses(
+        userId,
+        tx,
+      );
 
       const isDefault = !hasAddresses
         ? true
         : createAddressDto.isDefault || false;
 
-      const newAddress = await this.addressesStore.createAddress({
-        ...createAddressDto,
-        userId,
-        isDefault,
-      }, tx);
+      const newAddress = await this.addressesStore.createAddress(
+        {
+          ...createAddressDto,
+          userId,
+          isDefault,
+        },
+        tx,
+      );
 
       return newAddress;
     });
@@ -47,7 +59,11 @@ export class AddressesService {
     return address;
   }
 
-  async update(id: string, userId: string, updateAddressDto: UpdateAddressDto): Promise<schema.Address> {
+  async update(
+    id: string,
+    userId: string,
+    updateAddressDto: UpdateAddressDto,
+  ): Promise<schema.Address> {
     await this.findOne(id, userId); // Ensure it exists and belongs to user
 
     return await this.addressesStore.runTransaction(async (tx) => {
@@ -55,7 +71,12 @@ export class AddressesService {
         await this.addressesStore.unsetDefaultByUserId(userId, tx);
       }
 
-      const updatedAddress = await this.addressesStore.updateAddress(id, userId, updateAddressDto, tx);
+      const updatedAddress = await this.addressesStore.updateAddress(
+        id,
+        userId,
+        updateAddressDto,
+        tx,
+      );
 
       return updatedAddress;
     });
@@ -70,7 +91,8 @@ export class AddressesService {
 
         // If the deleted address was default, make another one default if any exist
         if (address.isDefault) {
-          const nextAddressId = await this.addressesStore.getFirstAddressIdByUserId(userId, tx);
+          const nextAddressId =
+            await this.addressesStore.getFirstAddressIdByUserId(userId, tx);
 
           if (nextAddressId) {
             await this.addressesStore.setAddressAsDefault(nextAddressId, tx);
@@ -78,8 +100,13 @@ export class AddressesService {
         }
       });
     } catch (error: any) {
-      if (error.code === '23503' || error.message?.includes('foreign key constraint')) {
-        throw new InvalidOperationError('Cannot delete this address because it is associated with past orders.');
+      if (
+        error.code === '23503' ||
+        error.message?.includes('foreign key constraint')
+      ) {
+        throw new InvalidOperationError(
+          'Cannot delete this address because it is associated with past orders.',
+        );
       }
       throw error;
     }
@@ -90,8 +117,11 @@ export class AddressesService {
 
     return await this.addressesStore.runTransaction(async (tx) => {
       await this.addressesStore.unsetDefaultByUserId(userId, tx);
-      
-      const updatedAddress = await this.addressesStore.setAddressAsDefault(id, tx);
+
+      const updatedAddress = await this.addressesStore.setAddressAsDefault(
+        id,
+        tx,
+      );
 
       return updatedAddress;
     });

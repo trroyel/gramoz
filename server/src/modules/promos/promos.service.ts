@@ -1,8 +1,9 @@
+import { Injectable, Inject } from '@nestjs/common';
 import {
-  Injectable,
-  Inject,
-} from '@nestjs/common';
-import { EntityNotFoundError, InvalidOperationError, EntityConflictError } from '../../common/errors/domain.errors';
+  EntityNotFoundError,
+  InvalidOperationError,
+  EntityConflictError,
+} from '../../common/errors/domain.errors';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { eq, desc, and, or, isNull, gt, sql } from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
@@ -17,7 +18,29 @@ export class PromosService {
   ) {}
 
   async create(dto: CreatePromoDto) {
-    const codeUpper = dto.code.toUpperCase();
+    if (dto.discountValue <= 0) {
+      throw new InvalidOperationError(
+        'Discount value must be greater than zero',
+      );
+    }
+
+    if (dto.discountType === 'percentage' && dto.discountValue > 100) {
+      throw new InvalidOperationError('Percentage discount cannot exceed 100%');
+    }
+
+    if (
+      dto.minOrderValue !== undefined &&
+      dto.minOrderValue !== null &&
+      dto.minOrderValue < 0
+    ) {
+      throw new InvalidOperationError('Minimum order value cannot be negative');
+    }
+
+    if (dto.maxUses !== undefined && dto.maxUses !== null && dto.maxUses < 1) {
+      throw new InvalidOperationError('Max uses must be at least 1');
+    }
+
+    const codeUpper = dto.code.trim().toUpperCase();
 
     // Check if code exists
     const existing = await this.db.query.promos.findFirst({

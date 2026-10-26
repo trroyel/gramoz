@@ -17,7 +17,7 @@ async function multipartRequest<T>(path: string, method: string, formData: FormD
   });
 
   const rawText = await response.text();
-  let data: any;
+  let data: { error?: { message?: string }; message?: string } | undefined;
   try {
     data = JSON.parse(rawText);
   } catch {
@@ -48,6 +48,10 @@ export const reviewsApi = {
   
   getProductReviews: (productId: string, page = 1) => {
     return httpClient.request<ApiResponse<Review[]>>(`/reviews/product/${productId}?page=${page}`);
+  },
+
+  getProductReviewStats: (productId: string) => {
+    return httpClient.request<ApiResponse<{ averageRating: number; reviewCount: number }>>(`/reviews/product/${productId}/stats`);
   },
   
   // Admin Methods

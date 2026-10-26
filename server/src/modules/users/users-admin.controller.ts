@@ -68,11 +68,13 @@ export class UsersAdminController {
 
   @Patch(':id/status')
   async updateStatus(
+    @CurrentUser() admin: User,
     @Param('id') targetId: string,
     @Body() dto: UpdateUserStatusDto,
     @Res() res: FastifyReply,
   ) {
     const user = await this.usersAdminService.updateStatus(
+      admin.id,
       targetId,
       dto.status,
     );

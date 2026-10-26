@@ -9,10 +9,18 @@ import { PromosModule } from '../promos/promos.module';
 import { DatabaseModule } from '@database/database.module';
 import { InvoicesService } from './invoices.service';
 
+import { OrdersExpiryProcessor } from './orders-expiry.processor';
+
 @Module({
   imports: [DatabaseModule, CourierModule, AuthModule, PromosModule],
   controllers: [OrdersController],
-  providers: [OrdersService, OrdersStore, OutboxProcessor, InvoicesService],
-  exports: [OrdersService, OrdersStore],
+  providers: [
+    OrdersService,
+    OrdersStore,
+    OutboxProcessor,
+    OrdersExpiryProcessor,
+    InvoicesService,
+  ],
+  exports: [OrdersService, OrdersStore, OrdersExpiryProcessor],
 })
 export class OrdersModule {}

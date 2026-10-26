@@ -1,8 +1,29 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
+
+export type DbTransaction = Parameters<
+  Parameters<NodePgDatabase<typeof schema>['transaction']>[0]
+>[0];
+export type DbExecutor = NodePgDatabase<typeof schema> | DbTransaction;
+
+export interface CartItemWithProduct {
+  id: string;
+  quantity: number;
+  productId: string;
+  productName: string | null;
+  productPrice: string | null;
+  productImages: any;
+  productStock: number | null;
+  productStatus: string | null;
+  variantId: string | null;
+  variantAttributes: any;
+  variantPrice: string | null;
+  variantStock: number | null;
+  variantImage: string | null;
+}
 
 @Injectable()
 export class CartStore {
@@ -10,9 +31,12 @@ export class CartStore {
     @Inject(DATABASE) private readonly db: NodePgDatabase<typeof schema>,
   ) {}
 
-  async getCartItemsWithProducts(userId: string, tx?: any) {
+  async getCartItemsWithProducts(
+    userId: string,
+    tx?: DbExecutor,
+  ): Promise<CartItemWithProduct[]> {
     const executor = tx || this.db;
-    return await executor
+    const items = await executor
       .select({
         id: schema.cartItems.id,
         quantity: schema.cartItems.quantity,
@@ -38,9 +62,14 @@ export class CartStore {
         eq(schema.cartItems.variantId, schema.productVariants.id),
       )
       .where(eq(schema.cartItems.userId, userId));
+
+    return items as CartItemWithProduct[];
   }
 
-  async getProductById(productId: string, tx?: any): Promise<schema.Product | null> {
+  async getProductById(
+    productId: string,
+    tx?: DbExecutor,
+  ): Promise<schema.Product | null> {
     const executor = tx || this.db;
     const [product] = await executor
       .select()
@@ -49,7 +78,10 @@ export class CartStore {
     return product || null;
   }
 
-  async getVariantById(variantId: string, tx?: any): Promise<schema.ProductVariant | null> {
+  async getVariantById(
+    variantId: string,
+    tx?: DbExecutor,
+  ): Promise<schema.ProductVariant | null> {
     const executor = tx || this.db;
     const [variant] = await executor
       .select()
@@ -58,14 +90,21 @@ export class CartStore {
     return variant || null;
   }
 
-  async findCartItemByProduct(userId: string, productId: string, variantId?: string, tx?: any): Promise<schema.CartItem | null> {
+  async findCartItemByProduct(
+    userId: string,
+    productId: string,
+    variantId?: string,
+    tx?: DbExecutor,
+  ): Promise<schema.CartItem | null> {
     const executor = tx || this.db;
-    
+
     // If variantId is provided, match exactly. If null/undefined, match where variantId is null
     const condition = and(
       eq(schema.cartItems.userId, userId),
       eq(schema.cartItems.productId, productId),
-      variantId ? eq(schema.cartItems.variantId, variantId) : isNull(schema.cartItems.variantId)
+      variantId
+        ? eq(schema.cartItems.variantId, variantId)
+        : isNull(schema.cartItems.variantId),
     );
 
     const [existing] = await executor
@@ -75,7 +114,11 @@ export class CartStore {
     return existing || null;
   }
 
-  async findCartItemById(cartItemId: string, userId: string, tx?: any): Promise<schema.CartItem | null> {
+  async findCartItemById(
+    cartItemId: string,
+    userId: string,
+    tx?: DbExecutor,
+  ): Promise<schema.CartItem | null> {
     const executor = tx || this.db;
     const [item] = await executor
       .select()
@@ -89,17 +132,32 @@ export class CartStore {
     return item || null;
   }
 
-  async updateCartItemQuantity(cartItemId: string, quantity: number, tx?: any): Promise<schema.CartItem> {
+  async updateCartItemQuantity(
+    cartItemId: string,
+    quantity: number,
+    userId?: string,
+    tx?: DbExecutor,
+  ): Promise<schema.CartItem> {
     const executor = tx || this.db;
+    const condition = userId
+      ? and(
+          eq(schema.cartItems.id, cartItemId),
+          eq(schema.cartItems.userId, userId),
+        )
+      : eq(schema.cartItems.id, cartItemId);
+
     const [updated] = await executor
       .update(schema.cartItems)
       .set({ quantity, abandonedEmailSent: false, updatedAt: new Date() })
-      .where(eq(schema.cartItems.id, cartItemId))
+      .where(condition)
       .returning();
     return updated;
   }
 
-  async createCartItem(data: typeof schema.cartItems.$inferInsert, tx?: any): Promise<schema.CartItem> {
+  async createCartItem(
+    data: typeof schema.cartItems.$inferInsert,
+    tx?: DbExecutor,
+  ): Promise<schema.CartItem> {
     const executor = tx || this.db;
     const [item] = await executor
       .insert(schema.cartItems)
@@ -108,14 +166,64 @@ export class CartStore {
     return item;
   }
 
-  async deleteCartItem(cartItemId: string, tx?: any): Promise<void> {
+  async upsertCartItem(
+    data: {
+      userId: string;
+      productId: string;
+      variantId?: string | null;
+      quantity: number;
+    },
+    maxStock?: number,
+    tx?: DbExecutor,
+  ): Promise<schema.CartItem | null> {
     const executor = tx || this.db;
-    await executor
-      .delete(schema.cartItems)
-      .where(eq(schema.cartItems.id, cartItemId));
+
+    const [item] = await executor
+      .insert(schema.cartItems)
+      .values({
+        userId: data.userId,
+        productId: data.productId,
+        variantId: data.variantId ?? null,
+        quantity: data.quantity,
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.cartItems.userId,
+          schema.cartItems.productId,
+          schema.cartItems.variantId,
+        ],
+        set: {
+          quantity: sql`${schema.cartItems.quantity} + EXCLUDED.quantity`,
+          abandonedEmailSent: false,
+          updatedAt: new Date(),
+        },
+        ...(maxStock !== undefined
+          ? {
+              where: sql`${schema.cartItems.quantity} + EXCLUDED.quantity <= ${maxStock}`,
+            }
+          : {}),
+      })
+      .returning();
+
+    return item || null;
   }
 
-  async deleteCartByUserId(userId: string, tx?: any): Promise<void> {
+  async deleteCartItem(
+    cartItemId: string,
+    userId?: string,
+    tx?: DbExecutor,
+  ): Promise<void> {
+    const executor = tx || this.db;
+    const condition = userId
+      ? and(
+          eq(schema.cartItems.id, cartItemId),
+          eq(schema.cartItems.userId, userId),
+        )
+      : eq(schema.cartItems.id, cartItemId);
+    await executor.delete(schema.cartItems).where(condition);
+  }
+
+  async deleteCartByUserId(userId: string, tx?: DbExecutor): Promise<void> {
     const executor = tx || this.db;
     await executor
       .delete(schema.cartItems)

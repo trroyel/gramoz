@@ -12,7 +12,7 @@ export class InvoicesService {
     if (!orderDetails) {
       throw new NotFoundException('Order not found');
     }
-    
+
     const items = await this.ordersStore.getOrderItemsWithProducts(orderId);
     const order = { ...orderDetails, items };
 
@@ -55,12 +55,12 @@ export class InvoicesService {
     this.generateHr(doc, 150);
 
     const customerInformationTop = 165;
-    
+
     // We expect order.user to have fullName, but in getOrderById it might just be the raw order
     // Note: If ordersStore doesn't fetch user info, we'll just use the user ID or a placeholder.
     // The current order type from the DB doesn't join user in getOrderById unless we write a specific query.
     // We will just use the shipping address if available.
-    
+
     doc
       .fontSize(10)
       .font('Helvetica-Bold')
@@ -78,11 +78,7 @@ export class InvoicesService {
       .font('Helvetica-Bold')
       .text('Status:', 50, customerInformationTop + 30)
       .font('Helvetica')
-      .text(
-        order.status.toUpperCase(),
-        150,
-        customerInformationTop + 30,
-      );
+      .text(order.status.toUpperCase(), 150, customerInformationTop + 30);
 
     this.generateHr(doc, 220);
   }
@@ -136,14 +132,10 @@ export class InvoicesService {
   }
 
   private generateFooter(doc: typeof PDFDocument) {
-    doc
-      .fontSize(10)
-      .text(
-        'Thank you for shopping with Gramoz!',
-        50,
-        700,
-        { align: 'center', width: 500 },
-      );
+    doc.fontSize(10).text('Thank you for shopping with Gramoz!', 50, 700, {
+      align: 'center',
+      width: 500,
+    });
   }
 
   private generateTableRow(

@@ -17,7 +17,11 @@ export class SettingsService {
     return isNaN(parsed) ? defaultValue : parsed;
   }
 
-  async setSetting(key: string, value: string, description?: string): Promise<void> {
+  async setSetting(
+    key: string,
+    value: string,
+    description?: string,
+  ): Promise<void> {
     await this.settingsStore.setSetting(key, value, description);
   }
 
@@ -47,27 +51,39 @@ export class SettingsService {
     return this.getIntSetting('ABANDONED_CART_IDLE_HOURS', 24);
   }
 
+  async getCheckoutExpiryMinutes(): Promise<number> {
+    return this.getIntSetting('CHECKOUT_EXPIRY_MINUTES', 30);
+  }
+
   // --- Storefront CMS ---
   async getStorefrontConfig() {
     const heroStr = await this.getSetting('STOREFRONT_HERO', '{}');
     const promoStr = await this.getSetting('STOREFRONT_PROMO', '{}');
-    
+
     try {
       return {
         hero: JSON.parse(heroStr),
         promo: JSON.parse(promoStr),
       };
-    } catch (e) {
+    } catch {
       return { hero: {}, promo: {} };
     }
   }
 
   async updateStorefrontConfig(payload: { hero?: any; promo?: any }) {
     if (payload.hero) {
-      await this.setSetting('STOREFRONT_HERO', JSON.stringify(payload.hero), 'Homepage Hero Section Configuration');
+      await this.setSetting(
+        'STOREFRONT_HERO',
+        JSON.stringify(payload.hero),
+        'Homepage Hero Section Configuration',
+      );
     }
     if (payload.promo) {
-      await this.setSetting('STOREFRONT_PROMO', JSON.stringify(payload.promo), 'Homepage Promo Section Configuration');
+      await this.setSetting(
+        'STOREFRONT_PROMO',
+        JSON.stringify(payload.promo),
+        'Homepage Promo Section Configuration',
+      );
     }
   }
 }

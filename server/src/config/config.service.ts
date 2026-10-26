@@ -1,13 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService as NestConfigService } from '@nestjs/config';
+import { validateEnvironment } from './env.validation';
 
 @Injectable()
 export class ConfigService {
-  constructor(private readonly configService: NestConfigService) { }
+  constructor(private readonly configService: NestConfigService) {}
 
-  // Application
+  // Environment Helpers
   get nodeEnv(): string {
     return this.configService.get<string>('NODE_ENV', 'development');
+  }
+
+  get isProduction(): boolean {
+    return this.nodeEnv === 'production';
+  }
+
+  get isDevelopment(): boolean {
+    return this.nodeEnv === 'development';
+  }
+
+  get isTest(): boolean {
+    return this.nodeEnv === 'test';
   }
 
   get port(): number {
@@ -32,7 +45,10 @@ export class ConfigService {
   }
 
   get dbPassword(): string {
-    return this.configService.get<string>('DB_PASSWORD', 'platform_pass');
+    return this.configService.get<string>(
+      'DB_PASSWORD',
+      this.isProduction ? '' : 'platform_pass',
+    );
   }
 
   get databaseUrl(): string {
@@ -60,6 +76,10 @@ export class ConfigService {
     return this.configService.get<string>('REDIS_PASSWORD', '');
   }
 
+  get redisUrl(): string {
+    return this.configService.get<string>('REDIS_URL', '');
+  }
+
   // Email
   get emailApiKey(): string {
     return this.configService.get<string>('EMAIL_API_KEY', '');
@@ -73,9 +93,20 @@ export class ConfigService {
     return this.configService.get<string>('ADMIN_EMAIL', '');
   }
 
-  // Auth
+  // Auth & Secrets
   get jwtSecret(): string {
-    return this.configService.get<string>('AUTH_JWT_SECRET', 'secret');
+    return (
+      this.configService.get<string>('AUTH_JWT_SECRET') ||
+      this.configService.get<string>('JWT_SECRET') ||
+      (this.isProduction ? '' : 'secret')
+    );
+  }
+
+  get cookieSecret(): string {
+    return this.configService.get<string>(
+      'COOKIE_SECRET',
+      this.isProduction ? '' : 'cookie-secret',
+    );
   }
 
   get jwtExpiresIn(): string {
@@ -102,6 +133,25 @@ export class ConfigService {
 
   get bcryptSaltRounds(): number {
     return this.configService.get<number>('AUTH_BCRYPT_SALT_ROUNDS', 10);
+  }
+
+  // Payment Gateway (SSLCommerz)
+  get sslcommerzStoreId(): string {
+    return this.configService.get<string>(
+      'SSLCOMMERZ_STORE_ID',
+      this.isProduction ? '' : 'testbox',
+    );
+  }
+
+  get sslcommerzStoreSecret(): string {
+    return this.configService.get<string>(
+      'SSLCOMMERZ_STORE_SECRET',
+      this.isProduction ? '' : 'testpass',
+    );
+  }
+
+  get sslcommerzIsSandbox(): boolean {
+    return this.configService.get<string>('SSLCOMMERZ_IS_SANDBOX') !== 'false';
   }
 
   // Google OAuth
@@ -147,5 +197,12 @@ export class ConfigService {
   get gwSmsToken(): string {
     return this.configService.get<string>('GW_SMS_TOKEN', '');
   }
-}
 
+  /**
+   * Programmatic assertion of production secrets.
+   * Throws ConfigurationError if production secrets policy is violated.
+   */
+  assertProductionSecrets(): void {
+    validateEnvironment(process.env);
+  }
+}

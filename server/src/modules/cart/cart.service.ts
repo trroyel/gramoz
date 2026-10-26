@@ -1,57 +1,57 @@
+import { Injectable } from '@nestjs/common';
 import {
-  Injectable,
-} from '@nestjs/common';
-import { EntityNotFoundError, InvalidOperationError, InsufficientStockError } from '../../common/errors/domain.errors';
+  EntityNotFoundError,
+  InvalidOperationError,
+  InsufficientStockError,
+} from '../../common/errors/domain.errors';
 import * as schema from '@database/schema';
 import { AddToCartDto } from './dto/add-to-cart.dto';
-import { CartStore } from './cart.store';
+import { CartStore, CartItemWithProduct } from './cart.store';
 
 export type CartSummary = {
-  items: {
-    id: string;
-    quantity: number;
-    productId: string;
-    productName: string;
-    productPrice: string;
-    productImages: any;
-    productStock: number;
-    productStatus: string | null;
-  }[];
+  items: CartItemWithProduct[];
   subtotal: string;
   itemCount: number;
 };
 
 @Injectable()
 export class CartService {
-  constructor(
-    private readonly cartStore: CartStore,
-  ) {}
+  constructor(private readonly cartStore: CartStore) {}
 
   async getCart(userId: string): Promise<CartSummary> {
     const items = await this.cartStore.getCartItemsWithProducts(userId);
 
     // Calculate totals
     const subtotal = items.reduce((sum, item) => {
-      const price = parseFloat((item as any).variantPrice ?? item.productPrice ?? '0');
+      const price = parseFloat(item.variantPrice ?? item.productPrice ?? '0');
       return sum + price * item.quantity;
     }, 0);
 
-    return { items: items as any, subtotal: subtotal.toFixed(2), itemCount: items.length };
+    return {
+      items,
+      subtotal: subtotal.toFixed(2),
+      itemCount: items.length,
+    };
   }
 
   async addItem(userId: string, dto: AddToCartDto): Promise<schema.CartItem> {
+    if (!dto.quantity || dto.quantity <= 0 || !Number.isInteger(dto.quantity)) {
+      throw new InvalidOperationError('Quantity must be a positive integer');
+    }
+
     // Verify product exists and is active
     const product = await this.cartStore.getProductById(dto.productId);
 
     if (!product) throw new EntityNotFoundError('Product not found');
     if (product.status !== 'active')
       throw new InvalidOperationError('Product is not available');
-      
+
     let maxStock = product.stock;
     if (dto.variantId) {
       const variant = await this.cartStore.getVariantById(dto.variantId);
       if (!variant) throw new EntityNotFoundError('Variant not found');
-      if (variant.productId !== product.id) throw new InvalidOperationError('Variant does not belong to product');
+      if (variant.productId !== product.id)
+        throw new InvalidOperationError('Variant does not belong to product');
       maxStock = variant.stock;
     }
 
@@ -60,29 +60,35 @@ export class CartService {
         `Only ${maxStock} units available in stock`,
       );
 
-    // If item already in cart, update quantity
-    const existing = await this.cartStore.findCartItemByProduct(userId, dto.productId, dto.variantId);
+    // Atomic upsert with concurrency protection and stock ceiling
+    const item = await this.cartStore.upsertCartItem(
+      {
+        userId,
+        productId: dto.productId,
+        variantId: dto.variantId ?? null,
+        quantity: dto.quantity,
+      },
+      maxStock,
+    );
 
-    if (existing) {
-      const newQty = existing.quantity + dto.quantity;
-      if (newQty > maxStock)
-        throw new InsufficientStockError(
-          `Cannot add more. Only ${maxStock} units available`,
-        );
-
-      return await this.cartStore.updateCartItemQuantity(existing.id, newQty);
+    if (!item) {
+      throw new InsufficientStockError(
+        `Cannot add more. Only ${maxStock} units available`,
+      );
     }
 
-    // Otherwise create new cart item
-    return await this.cartStore.createCartItem({
-      userId,
-      productId: dto.productId,
-      variantId: dto.variantId,
-      quantity: dto.quantity,
-    });
+    return item;
   }
 
-  async updateItem(userId: string, cartItemId: string, quantity: number): Promise<schema.CartItem> {
+  async updateItem(
+    userId: string,
+    cartItemId: string,
+    quantity: number,
+  ): Promise<schema.CartItem> {
+    if (!quantity || quantity <= 0 || !Number.isInteger(quantity)) {
+      throw new InvalidOperationError('Quantity must be a positive integer');
+    }
+
     const item = await this.cartStore.findCartItemById(cartItemId, userId);
 
     if (!item) throw new EntityNotFoundError('Cart item not found');
@@ -91,7 +97,7 @@ export class CartService {
     const product = await this.cartStore.getProductById(item.productId);
 
     if (!product) throw new EntityNotFoundError('Product not found');
-    
+
     let maxStock = product.stock;
     if (item.variantId) {
       const variant = await this.cartStore.getVariantById(item.variantId);
@@ -105,7 +111,11 @@ export class CartService {
         `Only ${maxStock} units available in stock`,
       );
 
-    return await this.cartStore.updateCartItemQuantity(cartItemId, quantity);
+    return await this.cartStore.updateCartItemQuantity(
+      cartItemId,
+      quantity,
+      userId,
+    );
   }
 
   async removeItem(userId: string, cartItemId: string): Promise<void> {
@@ -113,7 +123,7 @@ export class CartService {
 
     if (!item) throw new EntityNotFoundError('Cart item not found');
 
-    await this.cartStore.deleteCartItem(cartItemId);
+    await this.cartStore.deleteCartItem(cartItemId, userId);
   }
 
   async clearCart(userId: string): Promise<void> {

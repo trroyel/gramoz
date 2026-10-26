@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { productsApi } from "@/lib/api/products";
-import { ShoppingCart, CheckCircle, PackageX, ChevronRight, Home, ShieldCheck, Truck } from "lucide-react";
+import { ShoppingCart, CheckCircle, PackageX, ChevronRight, Home, ShieldCheck, Truck, Star } from "lucide-react";
 import Link from "next/link";
 import { AddToCartButton } from "./add-to-cart-button";
 import { getImageUrl } from "@/lib/utils";
@@ -112,9 +112,28 @@ export default async function ProductDetailPage({
                 {product.categoryName || 'Uncategorized'}
               </span>
             </div>
-            <h1 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-zinc-50 mb-4">
+            <h1 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-zinc-50 mb-3">
               {product.name}
             </h1>
+
+            {product.averageRating !== undefined && product.averageRating > 0 ? (
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex text-yellow-400">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      className={`w-4 h-4 ${star <= Math.round(product.averageRating || 0) ? "fill-current" : "text-zinc-300 dark:text-zinc-700"}`}
+                    />
+                  ))}
+                </div>
+                <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                  {product.averageRating.toFixed(1)}
+                </span>
+                <span className="text-sm text-zinc-500">
+                  ({product.reviewCount || 0} {product.reviewCount === 1 ? 'review' : 'reviews'})
+                </span>
+              </div>
+            ) : null}
             
             <div className="flex items-center gap-4 mb-6">
               <span className="text-4xl font-bold text-green-600 dark:text-green-500">
@@ -170,7 +189,12 @@ export default async function ProductDetailPage({
         </div>
         
         {/* Reviews Section */}
-        <ReviewSection productId={product.id} initialReviews={reviews} />
+        <ReviewSection
+          productId={product.id}
+          initialReviews={reviews}
+          averageRating={product.averageRating}
+          reviewCount={product.reviewCount}
+        />
       </div>
     </div>
   );

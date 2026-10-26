@@ -3,6 +3,7 @@ import {
   timestamp,
   uuid,
   uniqueIndex,
+  index,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { users } from './users';
@@ -20,14 +21,14 @@ export const wishlists = pgTable(
       .references(() => products.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (table) => {
-    return {
-      userProductUnique: uniqueIndex('user_product_unique').on(
-        table.userId,
-        table.productId
-      ),
-    };
-  }
+  (table) => [
+    uniqueIndex('user_product_unique').on(table.userId, table.productId),
+    index('idx_wishlists_product_id').on(table.productId),
+    index('idx_wishlists_user_created').on(
+      table.userId,
+      table.createdAt.desc(),
+    ),
+  ],
 );
 
 export const wishlistsRelations = relations(wishlists, ({ one }) => ({

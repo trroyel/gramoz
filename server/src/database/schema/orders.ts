@@ -6,9 +6,10 @@ import {
   uuid,
   varchar,
   index,
-  jsonb
+  uniqueIndex,
+  jsonb,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { users } from './users';
 import { products } from './products';
 import { productVariants } from './product_variants';
@@ -26,10 +27,16 @@ export const orders = pgTable(
       .references(() => users.id),
 
     status: orderStatusEnum().notNull().default('pending'),
-    paymentStatus: orderPaymentStatusEnum('payment_status').notNull().default('unpaid'),
+    paymentStatus: orderPaymentStatusEnum('payment_status')
+      .notNull()
+      .default('unpaid'),
     totalAmount: decimal('total_amount', { precision: 10, scale: 2 }).notNull(),
-    deliveryCharge: decimal('delivery_charge', { precision: 10, scale: 2 }).notNull().default('0'),
-    deliveryMethod: varchar('delivery_method', { length: 20 }).notNull().default('home'),
+    deliveryCharge: decimal('delivery_charge', { precision: 10, scale: 2 })
+      .notNull()
+      .default('0'),
+    deliveryMethod: varchar('delivery_method', { length: 20 })
+      .notNull()
+      .default('home'),
 
     shippingAddressId: uuid('shipping_address_id')
       .notNull()
@@ -43,12 +50,21 @@ export const orders = pgTable(
       .notNull()
       .default('0.00'),
 
+    idempotencyKey: varchar('idempotency_key', { length: 255 }),
+
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
   (table) => [
     index('orders_user_id_idx').on(table.userId),
     index('orders_status_idx').on(table.status),
+    uniqueIndex('orders_user_id_idempotency_key_idx').on(
+      table.userId,
+      table.idempotencyKey,
+    ),
+    index('orders_consignment_id_idx')
+      .on(table.consignmentId)
+      .where(sql`${table.consignmentId} IS NOT NULL`),
   ],
 );
 

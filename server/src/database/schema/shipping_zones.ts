@@ -1,4 +1,11 @@
-import { pgTable, text, uuid, timestamp, decimal, boolean } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  text,
+  uuid,
+  timestamp,
+  decimal,
+  boolean,
+} from 'drizzle-orm/pg-core';
 
 export const divisions = pgTable('divisions', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -25,8 +32,14 @@ export const zones = pgTable('zones', {
     .notNull()
     .references(() => districts.id, { onDelete: 'cascade' }),
   name: text('name').notNull(), // Upazila or City Corporation name
-  homeDeliveryCharge: decimal('home_delivery_charge', { precision: 10, scale: 2 }).notNull(),
-  branchPickupCharge: decimal('branch_pickup_charge', { precision: 10, scale: 2 }).notNull(),
+  homeDeliveryCharge: decimal('home_delivery_charge', {
+    precision: 10,
+    scale: 2,
+  }).notNull(),
+  branchPickupCharge: decimal('branch_pickup_charge', {
+    precision: 10,
+    scale: 2,
+  }).notNull(),
   estimatedDays: text('estimated_days').notNull().default('2-3 days'),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsNumber,
   Min,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -37,4 +38,9 @@ export class CreateProductDto {
   @IsString()
   @IsOptional()
   variants?: string; // JSON string of variants
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['active', 'draft', 'archived'])
+  status?: string;
 }

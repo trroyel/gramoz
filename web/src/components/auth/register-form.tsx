@@ -175,7 +175,8 @@ export function RegisterForm() {
               disabled={isLoading}
               className="w-full"
               onClick={() => {
-                window.location.href = `${process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:5000'}/api/v1/auth/google`;
+                const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || '';
+                window.location.href = `${serverUrl}/api/v1/auth/google`;
               }}
             >
               <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24">
@@ -192,7 +193,8 @@ export function RegisterForm() {
               disabled={isLoading}
               className="w-full"
               onClick={() => {
-                window.location.href = `${process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:5000'}/api/v1/auth/facebook`;
+                const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || '';
+                window.location.href = `${serverUrl}/api/v1/auth/facebook`;
               }}
             >
               <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24" style={{ color: "#1877F2" }}>

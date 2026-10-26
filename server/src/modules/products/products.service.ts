@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { EntityNotFoundError } from '../../common/errors/domain.errors';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
@@ -36,6 +36,7 @@ export type ProductWithCategory = {
   categoryId: string | null;
   categoryName: string | null;
   averageRating?: number;
+  reviewCount?: number;
   createdAt: Date | null;
   updatedAt: Date | null;
   variants?: any[];
@@ -43,6 +44,8 @@ export type ProductWithCategory = {
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: NodePgDatabase<typeof schema>,
     private readonly redisService: RedisService,
@@ -66,6 +69,7 @@ export class ProductsService {
       stock: createProductDto.stock,
       unit: createProductDto.unit ?? 'piece',
       categoryId: createProductDto.categoryId,
+      status: createProductDto.status ?? 'active',
       images: imageUrl ? [{ url: imageUrl }] : [],
     };
 
@@ -77,20 +81,34 @@ export class ProductsService {
 
       if (createProductDto.variants) {
         try {
-          const variants = JSON.parse(createProductDto.variants);
+          const variants =
+            typeof createProductDto.variants === 'string'
+              ? JSON.parse(createProductDto.variants)
+              : createProductDto.variants;
           if (Array.isArray(variants) && variants.length > 0) {
-            const variantInserts = variants.map((v: any) => ({
-              productId: product.id,
-              sku: v.sku,
-              price: v.price.toString(),
-              stock: Number(v.stock),
-              attributes: v.attributes,
-              imageUrl: v.imageUrl,
-            }));
-            await tx.insert(schema.productVariants).values(variantInserts);
+            const validVariants = variants.filter(
+              (v: any) =>
+                v &&
+                v.price !== undefined &&
+                !isNaN(Number(v.price)) &&
+                Number(v.price) >= 0 &&
+                (v.stock === undefined ||
+                  (!isNaN(Number(v.stock)) && Number(v.stock) >= 0)),
+            );
+            if (validVariants.length > 0) {
+              const variantInserts = validVariants.map((v: any) => ({
+                productId: product.id,
+                sku: v.sku,
+                price: Number(v.price).toFixed(2),
+                stock: Math.max(0, Math.floor(Number(v.stock || 0))),
+                attributes: v.attributes || {},
+                imageUrl: v.imageUrl,
+              }));
+              await tx.insert(schema.productVariants).values(variantInserts);
+            }
           }
         } catch (e) {
-          // invalid json, ignore or handle
+          // invalid json, ignore
         }
       }
 
@@ -108,7 +126,10 @@ export class ProductsService {
     sort?: string;
     page?: string;
     limit?: string;
-  }): Promise<{ data: ProductWithCategory[]; meta: { total: number; page: number; limit: number; totalPages: number } }> {
+  }): Promise<{
+    data: ProductWithCategory[];
+    meta: { total: number; page: number; limit: number; totalPages: number };
+  }> {
     // Always exclude soft-deleted and non-active products from the shop listing
     const conditions: SQL[] = [
       isNull(schema.products.deletedAt),
@@ -128,7 +149,7 @@ export class ProductsService {
           or(
             ilike(schema.categories.name, query.category),
             ilike(schema.categories.slug, query.category),
-          )!,
+          ),
         );
       }
     }
@@ -142,7 +163,9 @@ export class ProductsService {
       conditions.push(lte(schema.products.price, query.maxPrice));
     }
     if (query?.minRating) {
-      conditions.push(sql`COALESCE((SELECT AVG(rating) FROM reviews WHERE product_id = ${schema.products.id} AND status = 'approved'), 0) >= ${query.minRating}`);
+      conditions.push(
+        sql`COALESCE((SELECT AVG(rating) FROM reviews WHERE product_id = ${schema.products.id} AND status = 'approved'), 0) >= ${query.minRating}`,
+      );
     }
 
     // Pagination
@@ -175,7 +198,8 @@ export class ProductsService {
           status: schema.products.status,
           categoryId: schema.products.categoryId,
           categoryName: schema.categories.name,
-          averageRating: sql<number>`COALESCE((SELECT AVG(rating) FROM reviews WHERE product_id = ${schema.products.id} AND status = 'approved'), 0)::float`,
+          averageRating: sql<number>`COALESCE((SELECT ROUND(AVG(rating)::numeric, 2) FROM reviews WHERE product_id = ${schema.products.id} AND status = 'approved'), 0)::float`,
+          reviewCount: sql<number>`COALESCE((SELECT COUNT(*) FROM reviews WHERE product_id = ${schema.products.id} AND status = 'approved'), 0)::int`,
           createdAt: schema.products.createdAt,
           updatedAt: schema.products.updatedAt,
         })
@@ -214,9 +238,15 @@ export class ProductsService {
 
   async findOne(id: string): Promise<ProductWithCategory | undefined> {
     const cacheKey = `product:${id}`;
-    const cached = await this.redisService.get(cacheKey);
-    if (cached) {
-      return JSON.parse(cached);
+    try {
+      const cached = await this.redisService.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Redis get failed for ${cacheKey}, falling back to DB: ${err?.message}`,
+      );
     }
 
     const [product] = await this.db
@@ -232,7 +262,8 @@ export class ProductsService {
         status: schema.products.status,
         categoryId: schema.products.categoryId,
         categoryName: schema.categories.name,
-        averageRating: sql<number>`COALESCE((SELECT AVG(rating) FROM reviews WHERE product_id = ${schema.products.id} AND status = 'approved'), 0)::float`,
+        averageRating: sql<number>`COALESCE((SELECT ROUND(AVG(rating)::numeric, 2) FROM reviews WHERE product_id = ${schema.products.id} AND status = 'approved'), 0)::float`,
+        reviewCount: sql<number>`COALESCE((SELECT COUNT(*) FROM reviews WHERE product_id = ${schema.products.id} AND status = 'approved'), 0)::int`,
         createdAt: schema.products.createdAt,
         updatedAt: schema.products.updatedAt,
       })
@@ -259,10 +290,18 @@ export class ProductsService {
       const productWithVariants = { ...product, variants };
 
       // Cache for 5 minutes (300 seconds)
-      await this.redisService.set(cacheKey, JSON.stringify(productWithVariants), 300);
+      try {
+        await this.redisService.set(
+          cacheKey,
+          JSON.stringify(productWithVariants),
+          300,
+        );
+      } catch (err: any) {
+        this.logger.warn(`Redis set failed for ${cacheKey}: ${err?.message}`);
+      }
       return productWithVariants as any;
     }
-    
+
     return product as any;
   }
 
@@ -279,6 +318,12 @@ export class ProductsService {
     if (data.stock !== undefined) updateData.stock = data.stock;
     if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
     if (data.unit !== undefined) updateData.unit = data.unit;
+    if (
+      data.status !== undefined &&
+      ['active', 'draft', 'archived'].includes(data.status)
+    ) {
+      updateData.status = data.status;
+    }
     if (imageUrl !== undefined)
       updateData.images = imageUrl ? [{ url: imageUrl }] : [];
 
@@ -291,20 +336,36 @@ export class ProductsService {
 
       if (data.variants !== undefined) {
         // Delete existing variants
-        await tx.delete(schema.productVariants).where(eq(schema.productVariants.productId, id));
+        await tx
+          .delete(schema.productVariants)
+          .where(eq(schema.productVariants.productId, id));
 
         try {
-          const variants = JSON.parse(data.variants);
+          const variants =
+            typeof data.variants === 'string'
+              ? JSON.parse(data.variants)
+              : data.variants;
           if (Array.isArray(variants) && variants.length > 0) {
-            const variantInserts = variants.map((v: any) => ({
-              productId: id,
-              sku: v.sku,
-              price: v.price.toString(),
-              stock: Number(v.stock),
-              attributes: v.attributes,
-              imageUrl: v.imageUrl,
-            }));
-            await tx.insert(schema.productVariants).values(variantInserts);
+            const validVariants = variants.filter(
+              (v: any) =>
+                v &&
+                v.price !== undefined &&
+                !isNaN(Number(v.price)) &&
+                Number(v.price) >= 0 &&
+                (v.stock === undefined ||
+                  (!isNaN(Number(v.stock)) && Number(v.stock) >= 0)),
+            );
+            if (validVariants.length > 0) {
+              const variantInserts = validVariants.map((v: any) => ({
+                productId: id,
+                sku: v.sku,
+                price: Number(v.price).toFixed(2),
+                stock: Math.max(0, Math.floor(Number(v.stock || 0))),
+                attributes: v.attributes || {},
+                imageUrl: v.imageUrl,
+              }));
+              await tx.insert(schema.productVariants).values(variantInserts);
+            }
           }
         } catch (e) {
           // ignore or handle
@@ -315,7 +376,11 @@ export class ProductsService {
     });
 
     // Invalidate the specific product cache
-    await this.redisService.del(`product:${id}`);
+    try {
+      await this.redisService.del(`product:${id}`);
+    } catch (err: any) {
+      this.logger.warn(`Redis del failed for product:${id}: ${err?.message}`);
+    }
 
     return product;
   }
@@ -344,7 +409,11 @@ export class ProductsService {
     }
 
     // Invalidate the specific product cache
-    await this.redisService.del(`product:${id}`);
+    try {
+      await this.redisService.del(`product:${id}`);
+    } catch (err: any) {
+      this.logger.warn(`Redis del failed for product:${id}: ${err?.message}`);
+    }
 
     return product;
   }

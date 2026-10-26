@@ -1,9 +1,11 @@
+import { resolveInternalApiUrl, resolvePublicApiUrl } from './config';
+
 // On the server (Node.js), relative URLs don't work with fetch.
-// Use NEXT_PUBLIC_API_URL only on the client; fall back to the internal absolute URL on the server.
+// Use server-only resolveInternalApiUrl on the server; use resolvePublicApiUrl on the client.
 const isServer = typeof window === 'undefined';
 export const API_BASE_URL = isServer
-  ? (process.env.INTERNAL_API_URL || 'http://localhost:5000/api/v1')
-  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1');
+  ? resolveInternalApiUrl()
+  : resolvePublicApiUrl();
 
 export class HttpClient {
   // ── Refresh-lock state ─────────────────────────────────────────────────────
@@ -53,7 +55,8 @@ export class HttpClient {
     const response = await fetch(url, config);
 
     if (!response.ok) {
-      if (response.status === 401 && typeof window !== 'undefined' && endpoint !== '/auth/refresh') {
+      const isAuthAction = endpoint === '/auth/refresh' || endpoint === '/auth/login' || endpoint === '/auth/register';
+      if (response.status === 401 && typeof window !== 'undefined' && !isAuthAction) {
         // FormData bodies are one-time-read streams — they cannot be replayed after
         // the first fetch() has consumed them. Don't attempt a retry; instead surface
         // a clear error so the user knows to re-submit the form.

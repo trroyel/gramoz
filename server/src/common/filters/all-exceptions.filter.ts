@@ -59,15 +59,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message = exception.message;
     } else if (exception instanceof Error) {
       // Handle Drizzle or Database errors specifically if needed
-      if ('code' in exception) {
-        const anyEx = exception as any;
-        if (anyEx.code === '23505') {
-          // Postgres Unique Violation
-          status = HttpStatus.CONFLICT;
-          message = 'Resource already exists.';
-        } else {
-          message = exception.message;
-        }
+      const pgCode =
+        ('code' in exception && (exception as any).code) ||
+        ('cause' in exception && (exception as any).cause?.code);
+      if (pgCode === '23505') {
+        // Postgres Unique Violation
+        status = HttpStatus.CONFLICT;
+        message = 'Resource already exists.';
       } else {
         message = exception.message;
       }

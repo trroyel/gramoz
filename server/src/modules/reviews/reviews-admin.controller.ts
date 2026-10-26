@@ -1,4 +1,15 @@
-import { Controller, Get, Patch, Delete, Param, Query, UseGuards, Body } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Patch,
+  Delete,
+  Param,
+  Query,
+  UseGuards,
+  Body,
+  BadRequestException,
+} from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import { ReviewsService } from './reviews.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -21,12 +32,18 @@ export class ReviewsAdminController {
     @Param('id') id: string,
     @Body('status') status: 'pending' | 'approved' | 'rejected',
   ) {
+    if (!isUUID(id)) {
+      throw new BadRequestException('Invalid review ID format');
+    }
     const data = await this.reviewsService.updateReviewStatus(id, status);
     return { success: true, message: 'Review status updated', data };
   }
 
   @Delete(':id')
   async deleteReview(@Param('id') id: string) {
+    if (!isUUID(id)) {
+      throw new BadRequestException('Invalid review ID format');
+    }
     await this.reviewsService.deleteReview(id);
     return { success: true, message: 'Review deleted successfully' };
   }

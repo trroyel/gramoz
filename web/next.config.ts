@@ -1,29 +1,21 @@
 import type { NextConfig } from "next";
+import { resolveBackendOrigin, resolveImageRemotePatterns } from "./src/lib/config";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
   images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "images.unsplash.com",
-      },
-      {
-        protocol: "http",
-        hostname: "localhost",
-      },
-    ],
+    remotePatterns: resolveImageRemotePatterns(),
   },
   async rewrites() {
+    const backendOrigin = resolveBackendOrigin();
     return [
       {
         source: "/api/:path*",
-        destination: "http://localhost:5000/api/:path*",
+        destination: `${backendOrigin}/api/:path*`,
       },
       {
         source: "/public/:path*",
-        destination: "http://localhost:5000/public/:path*",
+        destination: `${backendOrigin}/public/:path*`,
       },
     ];
   },

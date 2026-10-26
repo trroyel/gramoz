@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '@/types';
 import { authApi } from '@/lib/api/auth';
+import { cartSync } from '@/lib/cart-sync';
+import { useCartStore } from '@/stores/cart-store';
 
 /**
  * Auth store — holds UI session state only.
@@ -41,12 +43,22 @@ export const useAuthStore = create<AuthState>()(
       setAuth: (user) => {
         // Cookie is set by the server — nothing to do client-side for the token
         set({ user, isAuthenticated: true });
+        cartSync.broadcast({
+          type: 'AUTH_CHANGED',
+          status: 'logged_in',
+          userId: user.id,
+        });
       },
 
       // Clears local UI state only — does NOT call the server.
       // Use this from the 401 handler so we don't nuke the refresh cookie.
       clearAuth: () => {
         set({ user: null, isAuthenticated: false });
+        useCartStore.getState().resetCart();
+        cartSync.broadcast({
+          type: 'AUTH_CHANGED',
+          status: 'logged_out',
+        });
       },
 
       // Full logout: tell the server to clear the httpOnly cookies, then clear local state.
@@ -57,6 +69,11 @@ export const useAuthStore = create<AuthState>()(
           console.error('Logout failed', error);
         }
         set({ user: null, isAuthenticated: false });
+        useCartStore.getState().resetCart();
+        cartSync.broadcast({
+          type: 'AUTH_CHANGED',
+          status: 'logged_out',
+        });
       },
 
       setUser: (user) => set({ user }),

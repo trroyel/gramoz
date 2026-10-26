@@ -15,7 +15,7 @@ export class PaymentsStore {
   }
 
   // --- Orders --- (Ideally in OrdersStore, but keeping here to prevent over-engineering for now)
-  
+
   async findOrderById(orderId: string, tx?: any): Promise<schema.Order | null> {
     const executor = tx || this.db;
     const [order] = await executor
@@ -25,10 +25,23 @@ export class PaymentsStore {
     return order || null;
   }
 
+  async findOrderByIdForUpdate(
+    orderId: string,
+    tx?: any,
+  ): Promise<schema.Order | null> {
+    const executor = tx || this.db;
+    const [order] = await executor
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, orderId))
+      .for('update');
+    return order || null;
+  }
+
   async updateOrderStatus(
-    orderId: string, 
-    data: Partial<typeof schema.orders.$inferInsert>, 
-    tx?: any
+    orderId: string,
+    data: Partial<typeof schema.orders.$inferInsert>,
+    tx?: any,
   ): Promise<void> {
     const executor = tx || this.db;
     await executor
@@ -50,7 +63,10 @@ export class PaymentsStore {
 
   // --- Payments ---
 
-  async findLatestPaymentByOrderId(orderId: string, tx?: any): Promise<schema.Payment | null> {
+  async findLatestPaymentByOrderId(
+    orderId: string,
+    tx?: any,
+  ): Promise<schema.Payment | null> {
     const executor = tx || this.db;
     const [payment] = await executor
       .select()
@@ -61,7 +77,10 @@ export class PaymentsStore {
     return payment || null;
   }
 
-  async findLatestPendingPaymentByOrderId(orderId: string, tx?: any): Promise<schema.Payment | null> {
+  async findLatestPendingPaymentByOrderId(
+    orderId: string,
+    tx?: any,
+  ): Promise<schema.Payment | null> {
     const executor = tx || this.db;
     const [payment] = await executor
       .select()
@@ -77,7 +96,34 @@ export class PaymentsStore {
     return payment || null;
   }
 
-  async findPaymentByTransactionId(tranId: string, tx?: any): Promise<schema.Payment | null> {
+  async findPaymentById(
+    paymentId: string,
+    tx?: any,
+  ): Promise<schema.Payment | null> {
+    const executor = tx || this.db;
+    const [payment] = await executor
+      .select()
+      .from(schema.payments)
+      .where(eq(schema.payments.id, paymentId));
+    return payment || null;
+  }
+
+  async findPaymentByIdForUpdate(
+    paymentId: string,
+    tx: any,
+  ): Promise<schema.Payment | null> {
+    const [payment] = await tx
+      .select()
+      .from(schema.payments)
+      .where(eq(schema.payments.id, paymentId))
+      .for('update');
+    return payment || null;
+  }
+
+  async findPaymentByTransactionId(
+    tranId: string,
+    tx?: any,
+  ): Promise<schema.Payment | null> {
     const executor = tx || this.db;
     const [payment] = await executor
       .select()
@@ -86,7 +132,30 @@ export class PaymentsStore {
     return payment || null;
   }
 
-  async createPayment(data: typeof schema.payments.$inferInsert, tx?: any): Promise<schema.Payment> {
+  async findPaymentByTransactionIdForUpdate(
+    tranId: string,
+    tx: any,
+  ): Promise<schema.Payment | null> {
+    const [payment] = await tx
+      .select()
+      .from(schema.payments)
+      .where(eq(schema.payments.transactionId, tranId))
+      .for('update');
+    return payment || null;
+  }
+
+  async createOutboxEvent(
+    data: typeof schema.outboxEvents.$inferInsert,
+    tx?: any,
+  ): Promise<void> {
+    const executor = tx || this.db;
+    await executor.insert(schema.outboxEvents).values(data);
+  }
+
+  async createPayment(
+    data: typeof schema.payments.$inferInsert,
+    tx?: any,
+  ): Promise<schema.Payment> {
     const executor = tx || this.db;
     const [payment] = await executor
       .insert(schema.payments)
@@ -96,9 +165,9 @@ export class PaymentsStore {
   }
 
   async updatePaymentStatus(
-    paymentId: string, 
-    data: Partial<typeof schema.payments.$inferInsert>, 
-    tx?: any
+    paymentId: string,
+    data: Partial<typeof schema.payments.$inferInsert>,
+    tx?: any,
   ): Promise<void> {
     const executor = tx || this.db;
     await executor

@@ -6,24 +6,52 @@ import { Review } from "@/types";
 interface ReviewSectionProps {
   productId: string;
   initialReviews: Review[];
+  averageRating?: number;
+  reviewCount?: number;
 }
 
-const getImageUrl = (urlOrObj?: string | { url?: string } | any) => {
+const getImageUrl = (urlOrObj?: string | { url?: string } | unknown) => {
   if (!urlOrObj) return "";
-  const url = typeof urlOrObj === 'string' ? urlOrObj : urlOrObj?.url;
-  if (!url || typeof url !== 'string') return "";
-  if (url.startsWith('http')) return url;
-  return url.startsWith('/uploads') ? `/public${url}` : url;
+  const url =
+    typeof urlOrObj === "string" ? urlOrObj : (urlOrObj as { url?: string })?.url;
+  if (!url || typeof url !== "string") return "";
+  if (url.startsWith("http")) return url;
+  return url.startsWith("/uploads") ? `/public${url}` : url;
 };
 
-export function ReviewSection({ productId, initialReviews }: ReviewSectionProps) {
+export function ReviewSection({
+  initialReviews,
+  averageRating,
+  reviewCount,
+}: ReviewSectionProps) {
   // Only show approved reviews on the product page
   const approvedReviews = initialReviews.filter(r => r.status === 'approved');
+  const totalReviews = reviewCount !== undefined ? reviewCount : approvedReviews.length;
 
   return (
     <div className="mt-16 border-t border-zinc-200 dark:border-zinc-800 pt-10">
       <div className="flex items-center justify-between mb-8">
-        <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Customer Reviews</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Customer Reviews</h2>
+          {totalReviews > 0 && averageRating !== undefined && averageRating > 0 && (
+            <div className="flex items-center gap-2 mt-2">
+              <div className="flex text-yellow-400">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star
+                    key={star}
+                    className={`w-4 h-4 ${star <= Math.round(averageRating) ? "fill-current" : "text-zinc-300 dark:text-zinc-700"}`}
+                  />
+                ))}
+              </div>
+              <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                {averageRating.toFixed(1)} out of 5
+              </span>
+              <span className="text-sm text-zinc-500">
+                ({totalReviews} verified {totalReviews === 1 ? 'review' : 'reviews'})
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">

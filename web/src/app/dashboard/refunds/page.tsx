@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { refundsApi } from "@/lib/api/refunds";
 import { Refund } from "@/types";
 import { Loader2, ReceiptText, Clock, CheckCircle2, XCircle, ChevronRight } from "lucide-react";
@@ -20,7 +20,7 @@ export default function MyRefundsPage() {
         if (res.success && res.data) {
           setRefunds(res.data);
         }
-      } catch (error) {
+      } catch {
         toast.error("Failed to load your refunds");
       } finally {
         setIsLoading(false);
@@ -32,6 +32,7 @@ export default function MyRefundsPage() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'processed': return <CheckCircle2 className="w-5 h-5 text-green-500" />;
+      case 'processing': return <Clock className="w-5 h-5 text-amber-500" />;
       case 'rejected': return <XCircle className="w-5 h-5 text-red-500" />;
       default: return <Clock className="w-5 h-5 text-yellow-500" />;
     }
@@ -69,7 +70,7 @@ export default function MyRefundsPage() {
               </div>
               <h3 className="text-lg font-semibold mb-2">No refunds requested</h3>
               <p className="text-zinc-500 text-sm mb-6 max-w-md mx-auto">
-                You haven't requested any refunds yet. You can request a refund from the Order Details page of any delivered order.
+                You haven&apos;t requested any refunds yet. You can request a refund from the Order Details page of any delivered order.
               </p>
               <Button asChild variant="outline">
                 <Link href="/dashboard/orders">View My Orders</Link>
@@ -91,9 +92,10 @@ export default function MyRefundsPage() {
                             Refund of ৳{Number(refund.amount).toFixed(2)}
                           </h4>
                           <span className={`px-2 py-0.5 text-xs font-semibold rounded-full capitalize
-                            ${refund.status === 'processed' ? 'bg-green-100 text-green-700' : ''}
-                            ${refund.status === 'rejected' ? 'bg-red-100 text-red-700' : ''}
-                            ${refund.status === 'requested' ? 'bg-yellow-100 text-yellow-700' : ''}
+                            ${refund.status === 'processed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : ''}
+                            ${refund.status === 'processing' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : ''}
+                            ${refund.status === 'rejected' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : ''}
+                            ${refund.status === 'requested' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : ''}
                           `}>
                             {refund.status}
                           </span>
@@ -101,6 +103,11 @@ export default function MyRefundsPage() {
                         <p className="text-sm text-zinc-600 dark:text-zinc-400">
                           Order #{refund.orderId} • Reason: {formatReason(refund.reason)}
                         </p>
+                        {refund.status === 'processing' && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                            In-flight: processing with payment gateway and issuing bank.
+                          </p>
+                        )}
                         <p className="text-xs text-zinc-500 mt-2">
                           Requested on {new Date(refund.createdAt).toLocaleDateString()}
                         </p>

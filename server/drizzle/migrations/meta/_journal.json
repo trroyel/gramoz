@@ -127,6 +127,105 @@
       "when": 1784976546671,
       "tag": "0017_eager_silverclaw",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785000000000,
+      "tag": "0018_cart_items_unique_nulls_not_distinct",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792270685424,
+      "tag": "0019_huge_hiroim",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792400000000,
+      "tag": "0020_reviews_rating_indexing",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792486400000,
+      "tag": "0021_outbox_events_partial_indexing",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792572800000,
+      "tag": "0022_cart_items_abandoned_indexing",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792659200000,
+      "tag": "0023_products_catalog_indexing",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792662800000,
+      "tag": "0024_promos_loyalty_indexing",
+      "breakpoints": false
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792666400000,
+      "tag": "0025_refunds_integrity",
+      "breakpoints": false
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792670000000,
+      "tag": "0026_refunds_idempotency_claim",
+      "breakpoints": false
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792673600000,
+      "tag": "0027_wishlists_indexing",
+      "breakpoints": false
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1792677200000,
+      "tag": "0028_loyalty_review_reward_idempotency",
+      "breakpoints": false
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792680800000,
+      "tag": "0029_backfill_historical_review_loyalty_references",
+      "breakpoints": false
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792684400000,
+      "tag": "0030_orders_consignment_id_idx",
+      "breakpoints": false
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792688000000,
+      "tag": "0031_courier_reconciliation_audit",
+      "breakpoints": false
     }
   ]
 }
+

@@ -1,0 +1,7 @@
+[2026-10-25T11:38:24Z] Starting automated logical backup for database 'platform_db'...
+Host pg_dump not found; executing pg_dump via docker container 'gramoz-postgres-1'...
+[2026-10-25T11:38:25Z] Backup completed successfully: /home/trroyel/gramoz/infra/backups/gramoz_backup_20261025_173824.dump (Size: 380K)
+[2026-10-25T11:38:25Z] Generated checksum: 3ab748af3c640668ddc251e3359afcfc20fdc88b96502bf74592314a83f1f038  /home/trroyel/gramoz/infra/backups/gramoz_backup_20261025_173824.dump
+[2026-10-25T11:38:25Z] Encrypted backup generated with AES-256-CBC: /home/trroyel/gramoz/infra/backups/gramoz_backup_20261025_173824.dump.enc
+[2026-10-25T11:38:25Z] OFFSITE_S3_URI not configured. Backup retained locally (Offsite sync UNEXECUTED).
+[2026-10-25T11:38:25Z] Retention policy enforced: removed local backups older than 7 days.

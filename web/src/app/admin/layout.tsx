@@ -24,6 +24,7 @@ import {
   Truck
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
+import { authApi } from "@/lib/api/auth";
 import { Button } from "@/components/ui/button";
 import { PLATFORM_ROLES } from "@/types";
 
@@ -50,22 +51,64 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { logout } = useAuthStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(true);
+  const [isVerifiedAdmin, setIsVerifiedAdmin] = useState(false);
 
-  // Protect the admin route
+  // Active cryptographic verification against backend — prevents localStorage tampering
   useEffect(() => {
-    if (user === undefined) return; // Wait for hydration if undefined
-    if (user === null) {
-      router.push("/login");
-    } else if (user.role && !PLATFORM_ROLES.includes(user.role)) {
-      router.push("/");
-    }
-  }, [user, router]);
+    let isMounted = true;
 
-  const isPlatformUser = user && user.role && PLATFORM_ROLES.includes(user.role);
-  // If there's no user or the user is not a platform user, don't render the layout
-  if (!isPlatformUser) return null;
+    async function verifyAdminSession() {
+      try {
+        const res = await authApi.getMe();
+        if (!isMounted) return;
+
+        if (
+          res.success &&
+          res.data &&
+          res.data.role &&
+          PLATFORM_ROLES.includes(res.data.role)
+        ) {
+          useAuthStore.getState().setUser(res.data);
+          setIsVerifiedAdmin(true);
+        } else {
+          // User is authenticated as customer or unauthorized role
+          useAuthStore.getState().clearAuth();
+          router.replace("/");
+        }
+      } catch {
+        if (!isMounted) return;
+        useAuthStore.getState().clearAuth();
+        router.replace("/login");
+      } finally {
+        if (isMounted) {
+          setIsVerifying(false);
+        }
+      }
+    }
+
+    void verifyAdminSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
+
+  // Prevent any rendering of admin layout or child pages while verification is pending
+  if (isVerifying || !isVerifiedAdmin) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-zinc-50 dark:bg-black">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-green-600 border-t-transparent" />
+          <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+            Verifying administrative credentials...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const handleLogout = async () => {
     await logout();

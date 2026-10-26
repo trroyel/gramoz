@@ -70,7 +70,7 @@ export default async function Home() {
               alt="Gramoz Hero Banner" 
               fill 
               sizes="(max-width: 1280px) 100vw, 1280px"
-              className="object-cover"
+              className="object-cover pointer-events-none"
               priority
             />
             <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/70 sm:via-black/40 to-transparent"></div>
@@ -180,13 +180,13 @@ export default async function Home() {
                 <Link href={promoButtonLink}>{promoButtonText}</Link>
               </Button>
             </div>
-            <div className="hidden md:block relative w-1/3 min-h-[300px] h-full">
+            <div className="hidden md:block relative w-1/3 min-h-[300px] h-full pointer-events-none">
                <Image 
                   src={promoImage}
                   alt="Gramoz Promo Banner" 
                   fill
                   sizes="33vw"
-                  className="object-cover"
+                  className="object-cover pointer-events-none"
                 />
             </div>
           </div>

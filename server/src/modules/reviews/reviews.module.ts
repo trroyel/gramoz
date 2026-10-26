@@ -10,7 +10,13 @@ import { StorageModule } from '../storage/storage.module';
 import { OrdersModule } from '../orders/orders.module';
 
 @Module({
-  imports: [DatabaseModule, LoyaltyModule, SettingsModule, StorageModule, OrdersModule],
+  imports: [
+    DatabaseModule,
+    LoyaltyModule,
+    SettingsModule,
+    StorageModule,
+    OrdersModule,
+  ],
   controllers: [ReviewsController, ReviewsAdminController],
   providers: [ReviewsService, ReviewsStore],
   exports: [ReviewsService, ReviewsStore],

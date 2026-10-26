@@ -1,4 +1,4 @@
-import { HttpClient } from '../http-clients';
+import { HttpClient, API_BASE_URL } from '../http-clients';
 
 export interface HealthReport {
   status: 'ok' | 'error' | 'shutting_down';
@@ -16,11 +16,6 @@ class HealthApi extends HttpClient {
     // But since the health check returns valid JSON on 503, let's catch and parse it manually if needed.
     // However, our `HttpClient` currently throws an Error on `!response.ok`.
     // So we'll add a custom fetch here to avoid throwing on 503 since 503 is a valid health response.
-    const isServer = typeof window === 'undefined';
-    const API_BASE_URL = isServer
-      ? (process.env.INTERNAL_API_URL || 'http://localhost:5000/api/v1')
-      : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1');
-
     const response = await fetch(`${API_BASE_URL}/health`, {
       method: 'GET',
     });

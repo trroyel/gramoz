@@ -6,8 +6,9 @@ import {
   integer,
   jsonb,
   uniqueIndex,
+  index,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { users } from './users';
 import { products } from './products';
 import { orders } from './orders';
@@ -34,7 +35,22 @@ export const reviews = pgTable(
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('idx_unique_review_per_purchase').on(table.userId, table.productId, table.orderId),
+    uniqueIndex('idx_unique_review_per_purchase').on(
+      table.userId,
+      table.productId,
+      table.orderId,
+    ),
+    index('idx_reviews_product_approved_rating')
+      .on(table.productId, table.rating)
+      .where(sql`status = 'approved'`),
+    index('idx_reviews_product_approved_created')
+      .on(table.productId, table.createdAt.desc())
+      .where(sql`status = 'approved'`),
+    index('idx_reviews_status_created_at').on(
+      table.status,
+      table.createdAt.desc(),
+    ),
+    index('idx_reviews_user_created').on(table.userId, table.createdAt.desc()),
   ],
 );
 

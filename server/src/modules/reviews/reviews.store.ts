@@ -1,6 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Injectable, Inject } from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { DATABASE } from '@database/database.module';
 import * as schema from '@database/schema';
 
@@ -52,16 +56,43 @@ export class ReviewsStore {
         eq(schema.reviews.productId, productId),
         eq(schema.reviews.status, 'approved'),
       ),
+      orderBy: (reviews, { desc }) => [desc(reviews.createdAt)],
       limit,
       offset,
       with: {
         user: {
           columns: {
             fullName: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
+  }
+
+  async getProductReviewStats(
+    productId: string,
+  ): Promise<{ averageRating: number; reviewCount: number }> {
+    const [stats] = await this.db
+      .select({
+        averageRating: sql<number>`COALESCE(ROUND(AVG(${schema.reviews.rating})::numeric, 2), 0)::float`,
+        reviewCount: sql<number>`COUNT(*)::int`,
+      })
+      .from(schema.reviews)
+      .where(
+        and(
+          eq(schema.reviews.productId, productId),
+          eq(schema.reviews.status, 'approved'),
+        ),
+      );
+    return stats || { averageRating: 0, reviewCount: 0 };
+  }
+
+  async getReviewById(id: string): Promise<schema.Review | null> {
+    const [review] = await this.db
+      .select()
+      .from(schema.reviews)
+      .where(eq(schema.reviews.id, id));
+    return review || null;
   }
 
   async findAllForAdmin(limit = 20, offset = 0) {
@@ -79,8 +110,8 @@ export class ReviewsStore {
         product: {
           columns: {
             name: true,
-          }
-        }
+          },
+        },
       },
     });
   }
@@ -94,11 +125,66 @@ export class ReviewsStore {
     return review;
   }
 
+  async getProductById(productId: string) {
+    const [product] = await this.db
+      .select({
+        id: schema.products.id,
+        status: schema.products.status,
+        deletedAt: schema.products.deletedAt,
+      })
+      .from(schema.products)
+      .where(eq(schema.products.id, productId));
+    return product || null;
+  }
+
+  async getReviewsByUser(userId: string, limit = 10, offset = 0) {
+    return this.db.query.reviews.findMany({
+      where: eq(schema.reviews.userId, userId),
+      orderBy: (reviews, { desc }) => [desc(reviews.createdAt)],
+      limit,
+      offset,
+      with: {
+        product: {
+          columns: {
+            id: true,
+            name: true,
+            images: true,
+          },
+        },
+      },
+    });
+  }
+
+  async updateUserReview(
+    id: string,
+    userId: string,
+    data: { rating?: number; comment?: string; images?: string[] },
+  ) {
+    const [review] = await this.db
+      .update(schema.reviews)
+      .set({
+        ...data,
+        status: 'pending',
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schema.reviews.id, id), eq(schema.reviews.userId, userId)))
+      .returning();
+    return review || null;
+  }
+
+  async deleteUserReview(id: string, userId: string) {
+    const [review] = await this.db
+      .delete(schema.reviews)
+      .where(and(eq(schema.reviews.id, id), eq(schema.reviews.userId, userId)))
+      .returning();
+    return review || null;
+  }
+
   async deleteReview(id: string) {
     const [review] = await this.db
       .delete(schema.reviews)
       .where(eq(schema.reviews.id, id))
       .returning();
-    return review;
+    return review || null;
   }
 }

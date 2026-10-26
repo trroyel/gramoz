@@ -3,6 +3,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "./theme-provider";
 import { QueryProvider } from "./query-provider";
+import { CartSyncProvider } from "./cart-sync-provider";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -13,7 +14,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         enableSystem
         disableTransitionOnChange
       >
-        {children}
+        <CartSyncProvider>
+          {children}
+        </CartSyncProvider>
         <Toaster position="top-right" />
       </ThemeProvider>
     </QueryProvider>

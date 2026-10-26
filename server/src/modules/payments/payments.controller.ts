@@ -52,18 +52,40 @@ export class PaymentsController {
   @SkipThrottle()
   @Post('sslcommerz/success')
   async successCallback(@Body() body: any, @Res() res: FastifyReply) {
-    await this.paymentsService.verifyPayment(body);
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
-    return res
-      .code(302)
-      .header('Location', `${frontendUrl}/checkout/success`)
-      .send();
+    try {
+      const result = await this.paymentsService.verifyPayment(body);
+      if (result && result.success) {
+        return res
+          .code(302)
+          .header('Location', `${frontendUrl}/checkout/success`)
+          .send();
+      }
+
+      const message = result?.message || 'Payment verification failed';
+      return res
+        .code(302)
+        .header(
+          'Location',
+          `${frontendUrl}/checkout/fail?reason=${encodeURIComponent(message)}`,
+        )
+        .send();
+    } catch (error: any) {
+      const message = error?.message || 'Payment verification error';
+      return res
+        .code(302)
+        .header(
+          'Location',
+          `${frontendUrl}/checkout/fail?reason=${encodeURIComponent(message)}`,
+        )
+        .send();
+    }
   }
 
   @SkipThrottle()
   @Post('sslcommerz/fail')
   async failCallback(@Body() body: any, @Res() res: FastifyReply) {
-    await this.paymentsService.verifyPayment(body);
+    await this.paymentsService.handleFailCallback(body);
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
     return res
       .code(302)
@@ -85,7 +107,12 @@ export class PaymentsController {
   @SkipThrottle()
   @Post('sslcommerz/ipn')
   async ipnListener(@Body() body: any, @Res() res: FastifyReply) {
-    await this.paymentsService.verifyPayment(body);
+    const result = await this.paymentsService.verifyPayment(body);
+    if (result && !result.success) {
+      return res
+        .status(HttpStatus.BAD_REQUEST)
+        .send(result.message || 'IPN Verification Failed');
+    }
     return res.status(HttpStatus.OK).send('IPN Received');
   }
 

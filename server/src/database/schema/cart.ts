@@ -4,9 +4,10 @@ import {
   pgTable,
   timestamp,
   uuid,
-  uniqueIndex,
+  unique,
+  index,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { users } from './users';
 import { products } from './products';
 
@@ -23,13 +24,21 @@ export const cartItems = pgTable(
     variantId: uuid('variant_id'), // optional, refers to product_variants
 
     quantity: integer().notNull().default(1),
-    abandonedEmailSent: boolean('abandoned_email_sent').notNull().default(false),
+    abandonedEmailSent: boolean('abandoned_email_sent')
+      .notNull()
+      .default(false),
 
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
-  // We remove the DB level unique constraint because we want to allow 
-  // same product with different variants. Application logic will handle uniqueness.
+  (table) => [
+    unique('uq_cart_items_user_product_variant')
+      .on(table.userId, table.productId, table.variantId)
+      .nullsNotDistinct(),
+    index('idx_cart_items_abandoned')
+      .on(table.updatedAt.asc())
+      .where(sql`${table.abandonedEmailSent} = false`),
+  ],
 );
 
 export const cartItemsRelations = relations(cartItems, ({ one }) => ({

@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 
 import { CartService } from './cart.service';
@@ -44,7 +45,7 @@ export class CartController {
   @Put('items/:itemId')
   async updateItem(
     @CurrentUser() user: User,
-    @Param('itemId') itemId: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
     @Body() dto: UpdateCartItemDto,
   ) {
     const item = await this.cartService.updateItem(
@@ -56,7 +57,10 @@ export class CartController {
   }
 
   @Delete('items/:itemId')
-  async removeItem(@CurrentUser() user: User, @Param('itemId') itemId: string) {
+  async removeItem(
+    @CurrentUser() user: User,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+  ) {
     await this.cartService.removeItem(user.id, itemId);
     return { message: 'Item removed from cart' };
   }

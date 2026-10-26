@@ -14,7 +14,7 @@ import { getImageUrl } from "@/lib/utils";
 export default function WishlistPage() {
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
   const [loading, setLoading] = useState(true);
-  const { toggleItem } = useWishlistStore();
+  const { setItems, removeItem } = useWishlistStore();
   const addItem = useCartStore((s) => s.addItem);
 
   useEffect(() => {
@@ -26,6 +26,7 @@ export default function WishlistPage() {
       const res = await wishlistsApi.getAll();
       if (res.success) {
         setWishlists(res.data);
+        setItems(res.data.map((item) => item.productId));
       }
     } catch (error) {
       console.error("Failed to fetch wishlist", error);
@@ -35,16 +36,19 @@ export default function WishlistPage() {
   };
 
   const handleRemove = async (productId: string) => {
-    await toggleItem(productId);
-    // Optimistically remove from local state
-    setWishlists((prev) => prev.filter(w => w.productId !== productId));
+    try {
+      await wishlistsApi.remove(productId);
+      removeItem(productId);
+      setWishlists((prev) => prev.filter((w) => w.productId !== productId));
+    } catch (error) {
+      console.error("Failed to remove from wishlist", error);
+    }
   };
 
   const handleAddToCart = async (productId: string) => {
     addItem(productId, 1);
     // Remove from wishlist after adding to cart (save-for-later → acting on it)
-    await toggleItem(productId);
-    setWishlists((prev) => prev.filter(w => w.productId !== productId));
+    await handleRemove(productId);
   };
 
   if (loading) {
@@ -60,7 +64,7 @@ export default function WishlistPage() {
       <div className="text-center py-20 bg-white dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800">
         <HeartCrack className="mx-auto h-16 w-16 text-zinc-300 dark:text-zinc-700 mb-4" />
         <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">Your wishlist is empty</h2>
-        <p className="text-zinc-500 dark:text-zinc-400 mb-6">Looks like you haven't saved any products yet.</p>
+        <p className="text-zinc-500 dark:text-zinc-400 mb-6">Looks like you haven&apos;t saved any products yet.</p>
         <Link href="/products">
           <Button className="bg-green-600 hover:bg-green-700">
             Start Shopping

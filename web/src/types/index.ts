@@ -67,6 +67,7 @@ export interface Product {
   categoryId: string;
   categoryName?: string;
   averageRating?: number;
+  reviewCount?: number;
   status: string;
   createdAt: string;
   variants?: ProductVariant[];
@@ -83,6 +84,9 @@ export interface CartItem {
   productStatus: string;
   variantId?: string;
   variantAttributes?: Record<string, string>;
+  variantPrice?: string | null;
+  variantStock?: number | null;
+  variantImage?: string | null;
 }
 
 export interface Cart {
@@ -197,7 +201,7 @@ export interface Refund {
   orderId: string;
   amount: string | number;
   reason: string;
-  status: 'requested' | 'approved' | 'processed' | 'rejected';
+  status: 'requested' | 'approved' | 'processing' | 'processed' | 'rejected';
   notes?: string;
   adminNotes?: string;
   gatewayRefundId?: string;

@@ -18,7 +18,11 @@ export class SettingsStore {
     return setting?.value || null;
   }
 
-  async setSetting(key: string, value: string, description?: string): Promise<void> {
+  async setSetting(
+    key: string,
+    value: string,
+    description?: string,
+  ): Promise<void> {
     await this.db
       .insert(schema.settings)
       .values({ key, value, description })

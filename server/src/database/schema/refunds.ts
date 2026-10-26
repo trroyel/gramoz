@@ -1,6 +1,7 @@
 import {
   decimal,
   index,
+  uniqueIndex,
   pgEnum,
   pgTable,
   text,
@@ -8,7 +9,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { orders } from './orders';
 import { payments } from './payments';
 import { users } from './users';
@@ -16,8 +17,9 @@ import { users } from './users';
 export const refundStatusEnum = pgEnum('refund_status', [
   'requested', // Customer has submitted a refund request
   'approved', // Admin has approved — awaiting processing
-  'processed', // Money sent back to customer
-  'rejected', // Admin rejected the request
+  'processing', // In-flight with gateway / awaiting settlement verification
+  'processed', // Settled / money sent back to customer
+  'rejected', // Admin or provider rejected the request
 ]);
 
 export const refundReasonEnum = pgEnum('refund_reason', [
@@ -59,9 +61,12 @@ export const refunds = pgTable(
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
   (table) => [
-    index('idx_refunds_order_id').on(table.orderId),
+    uniqueIndex('uq_refunds_order_id')
+      .on(table.orderId)
+      .where(sql`${table.status} != 'rejected'`),
     index('idx_refunds_status').on(table.status),
     index('idx_refunds_requested_by').on(table.requestedBy),
+    index('idx_refunds_payment_id').on(table.paymentId),
   ],
 );
 
